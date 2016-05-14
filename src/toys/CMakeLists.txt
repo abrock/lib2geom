@@ -10,6 +10,15 @@ lpe-framework.cpp
 lpe-framework.h
 )
 
+file(COPY "svgd" DESTINATION ".")
+
+ADD_DEFINITIONS(
+    -std=c++11
+    -g
+    -ggdb
+    -O0
+)
+
 SET(2GEOM_TOYS-2_SRC
 2dsb2d
 aa
@@ -53,6 +62,8 @@ evolute
 filet-minion
 find-derivative
 gear
+hair
+hair-test
 hatches
 implicit-toy
 ineaa
@@ -172,3 +183,4 @@ IF(2GEOM_TOYS)
     ENDFOREACH(source)
 ENDIF(2GEOM_TOYS)
 
+target_link_libraries(hair-test gtest gtest_main)
