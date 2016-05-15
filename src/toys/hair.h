@@ -53,7 +53,7 @@ private:
      */
     Coord offset = .3;
 
-    double lineSpacing = .4;
+    double lineSpacing = .7;
 
     /**
      * @brief miter Miter limit for the Inkscape::half_outline method. Paths are expected to be smooth so this limit shouldn't do anything at all.
@@ -78,7 +78,7 @@ private:
 
     double lineWidth = lineSpacing * .5;
 
-    double maxStitchLength = 6;
+    double maxStitchLength = 10;
 
     std::vector<double> initialStichLengths;
     double initialStitchLengthsSum;
@@ -346,7 +346,7 @@ public:
        for (size_t ii = 0; ii < stitches.size(); ++ii) {
            currentStitches = assembleStitches(stitches, currentBridges, ii, true);
            currentCount = countStitches(currentStitches);
-           if (currentCount <= bestCount) {
+           if (currentCount < bestCount) {
                bestCount = currentCount;
                bestStitches = currentStitches;
                bestBridges = currentBridges;
@@ -357,7 +357,7 @@ public:
            }
            currentStitches = assembleStitches(stitches, currentBridges, ii, false);
            currentCount = countStitches(bestStitches);
-           if (currentCount <= bestCount) {
+           if (currentCount < bestCount) {
                bestCount = currentCount;
                bestStitches = currentStitches;
                bestBridges = currentBridges;
