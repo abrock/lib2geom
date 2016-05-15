@@ -53,7 +53,7 @@ private:
      */
     Coord offset = .33;
 
-    double lineSpacing = .2;
+    double lineSpacing = 2;
 
     /**
      * @brief miter Miter limit for the Inkscape::half_outline method. Paths are expected to be smooth so this limit shouldn't do anything at all.
@@ -147,10 +147,13 @@ public:
         for (auto & patch: stitches) {
             patch = purgeSmallStitches(patch, 0.1);
         }
-        std::cout << "#stitches after purge: " << countStitches() << std::endl;
         stop2 = clock();
         std::cout << "purgeSmallStitches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
         std::cout << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+
+        addStartStop();
+        std::cout << "#stitches after purge: " << countStitches() << std::endl;
+
 
         clock_t stop = clock();
         std::cout << "Calculation took " << (static_cast<double>(stop-start)) / CLOCKS_PER_SEC << std::endl << std::endl;
@@ -784,19 +787,24 @@ public:
             << "  viewBox=\"0 0 300 250\""
             << "  id=\"svg12765\""
             << "  version=\"1.1\">";
+        out << "<g>";
         for (auto c : curves) {
-            //write(out, c, "aaaaaa");
+            write(out, c, "aaaaaa");
         }
-        //write(out, curve, "ff0000");
-        //write(out, outline, "0000ff");
+        out << "</g>";
+        write(out, curve, "ff0000");
+        write(out, outline, "0000ff");
 
         //writeStitchPoints(out, "00ff00");
+        out << "<g>";
         writePatches(out, stitches);
+        out << "</g>";
         //write(out, getPath(discreteOutline), "ff0000");
         //writeCircles(out, discreteOutline, stitchPointRadius, "ff0000");
 
+        out << "<g>";
         writePatches(out, bridges);
-
+        out << "</g>";
         out << "</svg>" << std::endl;
     }
 
@@ -825,6 +833,28 @@ public:
             result.push_back(chars[distribution(generator)]);
         }
         return result;
+    }
+
+    void addStartStop() {
+        for (auto & patch : stitches) {
+            addStartStop(patch);
+        }
+    }
+
+    void addStartStop(std::vector<Point>& patch) {
+        if (patch.size() < 2) {
+            return;
+        }
+        std::vector<Point> start(2);
+        start[0] = patch[0];
+        Point direction = patch[1] - patch[0];
+        start.push_back(patch[0] + 0.3*direction / direction.length());
+        patch.insert(patch.begin(), start.begin(), start.end());
+
+        const Point& last = patch.back();
+        direction = patch[patch.size()-2] - last;
+        patch.push_back(last + 0.3*direction / direction.length());
+        patch.push_back(last);
     }
 
     void writePatches(std::ostream& out, std::vector<std::vector<Point> >& patches) {
