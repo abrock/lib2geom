@@ -51,9 +51,9 @@ private:
     /**
      * @brief offset Relative offset between the stitches of one line and the next. Relative to current stitch length.
      */
-    Coord offset = .3;
+    Coord offset = .33;
 
-    double lineSpacing = .7;
+    double lineSpacing = .9;
 
     /**
      * @brief miter Miter limit for the Inkscape::half_outline method. Paths are expected to be smooth so this limit shouldn't do anything at all.
@@ -366,7 +366,7 @@ public:
                          << " (" << 100*static_cast<double>(bestCount - origCount)/origCount << "%)" << std::endl;
                std::cout << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
            }
-           std::cout << ii << " / " << stitches.size() << '\r';
+           std::cout << ii << " / " << stitches.size() << std::endl;
 
        }
 
@@ -386,7 +386,7 @@ public:
         }
 
         while (true) {
-            Point lastPoint = patch.back();
+            const Point& lastPoint = patch.back();
             int currentLine = getNearestLine(lastPoint, visited, stitches);
             if (currentLine < 0) {
                 break;
@@ -397,7 +397,8 @@ public:
             if ((lastPoint - linePoints.back()).length() < (lastPoint - linePoints.front()).length()) {
                 std::reverse(linePoints.begin(), linePoints.end());
             }
-            if (maxStitchLength < (lastPoint - linePoints.front()).length()) {
+            //if (maxStitchLength < (lastPoint - linePoints.front()).length()) {
+            {
                 // Now we need to find a path along the outline from the lastPoint to the current line.
                 // First we find out if the start or the end of the line are within smaller range.
                 const size_t discreteSize = discreteOutline.size();
@@ -423,6 +424,29 @@ public:
                     bridge.push_back(discreteOutline[ii]);
                 }
                 bridge.push_back(discreteOutline[option]);
+                // We remove unnecessary stitches from the bridge.
+                if (bridge.size() > 1) {
+                    const Point& lastBridge = bridge.back();
+                    const Point& lastlastBridge = bridge[bridge.size()-2];
+                    const Point& nextLineStart = linePoints.front();
+                    if (dot(lastlastBridge - lastBridge, nextLineStart - lastBridge) > 0) {
+                        bridge.pop_back();
+                    }
+                }
+                if (bridge.size() > 1) {
+                    const Point& firstBridge = bridge.front();
+                    const Point& secondBridge = bridge[1];
+                    if (dot(secondBridge - firstBridge, lastPoint - firstBridge) > 0) {
+                        bridge.erase(bridge.begin());
+                    }
+                }
+                if (bridge.size() == 1) {
+                    const Point& bridgeElement = bridge.front();
+                    const Point& nextLineStart = linePoints.front();
+                    if (dot(lastPoint - bridgeElement, nextLineStart - bridgeElement) > 0) {
+                        bridge.clear();
+                    }
+                }
                 patch.insert(patch.end(), bridge.begin(), bridge.end());
                 bridges.push_back(bridge);
                 //std::cout << "added bridge stitches: " << bridge.size() << std::endl;
