@@ -17,7 +17,10 @@ ADD_DEFINITIONS(
     -g
     -ggdb
     -O0
+    -fopenmp
 )
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g -ggdb -O2 -fopenmp")
 
 SET(2GEOM_TOYS-2_SRC
 2dsb2d
