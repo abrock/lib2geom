@@ -42,6 +42,7 @@ int main(int argc, char **argv) {
 
     hair.run();
     hair.write("hair-results.svg");
+    hair.writeStitches("hair-results.txt");
 
     return 0;
 }

@@ -53,7 +53,7 @@ private:
      */
     Coord offset = .33;
 
-    double lineSpacing = 2;
+    double lineSpacing = .33;
 
     /**
      * @brief miter Miter limit for the Inkscape::half_outline method. Paths are expected to be smooth so this limit shouldn't do anything at all.
@@ -91,6 +91,43 @@ private:
     std::vector<std::vector<Point> > bridges;
 
 public:
+
+    /**
+     * @brief writeStitches Write the stitches into a text file suitable for libembroidery-convert
+     * @param filename
+     */
+    void writeStitches(const char* filename) {
+        std::ofstream out(filename);
+        writeStitches(out);
+    }
+
+    std::string outputStitch(Point p) {
+        std::stringstream out;
+        out << p.x() << "," << -p.y();
+        return out.str();
+    }
+
+    void writeStitches(std::ostream& out) {
+        if (countStitches() < 1) {
+            return;
+        }
+        const Point offset = stitches.front().front();
+        out <<  countStitches() + 1 + stitches.size() << std::endl;
+
+        out << "0.0,0.0 color:0 flags:1" << std::endl;
+        bool firstPatch = true;
+        for (const auto& patch : stitches) {
+            if (!firstPatch) {
+                out << outputStitch(patch.front()-offset) << " color:0 flags:2" << std::endl;
+            }
+            firstPatch = false;
+            out << outputStitch(patch.front()-offset) << " color:0 flags:1" << std::endl;
+            for (const auto& stitch : patch) {
+                out << outputStitch(stitch-offset) << " color:0 flags:0" << std::endl;
+            }
+        }
+        out << outputStitch(stitches.back().back()-offset) << " color:0 flags:16";
+    }
 
     double getStitchLengthes(const std::vector<Point>& stitches, std::vector<double>& lengths) {
         lengths.resize(stitches.size());
@@ -388,10 +425,17 @@ public:
         if (reverseInitial) {
             std::reverse(patch.begin(), patch.end());
         }
+        const size_t discreteSize = discreteOutline.size();
 
+        std::vector<std::vector<Point> > patches;
+        std::vector<Point> smallPatch;
+
+        int lastLine = -1;
         while (true) {
             const Point& lastPoint = patch.back();
             int currentLine = getNearestLine(lastPoint, visited, stitches);
+            //int currentLine = getNextLine(lastLine, lastPoint, visited, stitches);
+            lastLine = currentLine;
             if (currentLine < 0) {
                 break;
             }
@@ -402,7 +446,7 @@ public:
             {
                 // Now we need to find a path along the outline from the lastPoint to the current line.
                 // First we find out if the start or the end of the line are within smaller range.
-                const size_t discreteSize = discreteOutline.size();
+
                 const size_t lastPointOutline = bestMatch(discreteOutline, lastPoint);
                 const size_t frontOption = bestMatch(discreteOutline, linePoints.front());
                 const size_t backOption = bestMatch(discreteOutline, linePoints.back());
@@ -452,11 +496,18 @@ public:
                     bridges.push_back(bridge);
                     patch.insert(patch.end(), bridge.begin(), bridge.end());
                 }
+                if (!bridge.empty()) {
+                    patches.push_back(smallPatch);
+                    smallPatch.clear();
+                }
+            }
+            //else {
                 //std::cout << "added bridge stitches: " << bridge.size() << std::endl;
                 //patches.push_back(patch);
                 //patch.clear();
-            }
+            //}
             patch.insert(patch.end(), linePoints.begin(), linePoints.end());
+            smallPatch.insert(smallPatch.end(), linePoints.begin(), linePoints.end());
         }
         return patch;
     }
@@ -469,6 +520,38 @@ public:
             if (visited[ii]) {
                 continue;
             }
+            if (bestDistance > (p - lines[ii].front()).length()) {
+                bestDistance = (p - lines[ii].front()).length();
+                result = static_cast<int>(ii);
+            }
+            if (bestDistance > (p - lines[ii].back()).length()) {
+                bestDistance = (p - lines[ii].back()).length();
+                result = static_cast<int>(ii);
+            }
+        }
+        return result;
+    }
+
+    template<class BOOL>
+    int getNextLine(const int lastLine, const Point& p, const std::vector<BOOL>& visited, const std::vector<std::vector<Point> >& lines) {
+        if (lastLine < 0) {
+            return 0;
+        }
+        if (lastLine + 1 < lines.size()) {
+            if (stitchLength >= (p - lines[lastLine+1].front()).length()
+                    || stitchLength >=(p - lines[lastLine+1].back()).length()) {
+                if (!visited[lastLine+1]) {
+                    return lastLine+1;
+                }
+            }
+        }
+        int result = -1;
+        double bestDistance = std::numeric_limits<double>::max();
+        for (size_t ii = 0; ii < visited.size(); ++ii) {
+            if (visited[ii]) {
+                continue;
+            }
+            return static_cast<int>(ii);
             if (bestDistance > (p - lines[ii].front()).length()) {
                 bestDistance = (p - lines[ii].front()).length();
                 result = static_cast<int>(ii);
@@ -848,7 +931,7 @@ public:
         std::vector<Point> start(2);
         start[0] = patch[0];
         Point direction = patch[1] - patch[0];
-        start.push_back(patch[0] + 0.3*direction / direction.length());
+        start[1] = patch[0] + 0.3*direction / direction.length();
         patch.insert(patch.begin(), start.begin(), start.end());
 
         const Point& last = patch.back();
