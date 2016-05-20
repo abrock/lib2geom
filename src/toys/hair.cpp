@@ -34,15 +34,15 @@ int main(int argc, char **argv) {
     if (argc > 1) {
         std::cout << "Argument 1: " << argv[1] << std::endl;
     }
-    PathVector boundary = read_svgd("svgd/hair-boundary.svgd");
-    PathVector curve = read_svgd("svgd/hair-line.svgd");
+    PathVector boundary = read_svgd("svgd/hair2-boundary.svgd");
+    PathVector curve = read_svgd("svgd/hair2-line.svgd");
 
     Hair hair(boundary[0], curve[0]);
 
 
     hair.run();
-    hair.write("hair-results.svg");
-    hair.writeStitches("hair-results.txt");
+    hair.write("hair2-results.svg");
+    hair.writeStitches("hair2-results.txt");
 
     return 0;
 }

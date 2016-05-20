@@ -51,9 +51,9 @@ private:
     /**
      * @brief offset Relative offset between the stitches of one line and the next. Relative to current stitch length.
      */
-    Coord offset = .33;
+    Coord offset = .31;
 
-    double lineSpacing = .33;
+    double lineSpacing = 1.0/4.5;
 
     /**
      * @brief miter Miter limit for the Inkscape::half_outline method. Paths are expected to be smooth so this limit shouldn't do anything at all.
@@ -147,53 +147,53 @@ public:
 
     void run() {
         clock_t start = clock();
-        std::cout << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+        std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
 
         clock_t start2 = clock();
         getBoundaryDiscretization();
         clock_t stop2 = clock();
-        std::cout << "getBoundaryDiscretization took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-        std::cout << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+        std::cerr << "getBoundaryDiscretization took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+        std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
 
         start2 = clock();
         getCurves();
         stop2 = clock();
-        std::cout << "getCurves took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-        std::cout << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+        std::cerr << "getCurves took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+        std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
 
         start2 = clock();
         getStitches();
         stop2 = clock();
-        std::cout << "getStitches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-        std::cout << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+        std::cerr << "getStitches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+        std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
 
         start2 = clock();
         purgeOutside();
         stop2 = clock();
-        std::cout << "purgeOutside took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-        std::cout << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+        std::cerr << "purgeOutside took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+        std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
 
         start2 = clock();
         assembleStitches();
         stop2 = clock();
-        std::cout << "assembleStitches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-        std::cout << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+        std::cerr << "assembleStitches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+        std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
 
-        std::cout << "#stitches: " << countStitches() << std::endl;
+        std::cerr << "#stitches: " << countStitches() << std::endl;
         start2 = clock();
         for (auto & patch: stitches) {
             patch = purgeSmallStitches(patch, 0.1);
         }
         stop2 = clock();
-        std::cout << "purgeSmallStitches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-        std::cout << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+        std::cerr << "purgeSmallStitches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+        std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
 
         addStartStop();
-        std::cout << "#stitches after purge: " << countStitches() << std::endl;
+        std::cerr << "#stitches after purge: " << countStitches() << std::endl;
 
 
         clock_t stop = clock();
-        std::cout << "Calculation took " << (static_cast<double>(stop-start)) / CLOCKS_PER_SEC << std::endl << std::endl;
+        std::cerr << "Calculation took " << (static_cast<double>(stop-start)) / CLOCKS_PER_SEC << std::endl << std::endl;
     }
 
     size_t countStitches() {
@@ -280,7 +280,7 @@ public:
     }
 
     void getBoundaryDiscretization() {
-        std::cout << "########### getBoundaryDiscretization ###########" << std::endl;
+        std::cerr << "########### getBoundaryDiscretization ###########" << std::endl;
         std::vector<Point> tmp;
         for (auto it = outline.begin(); it != outline.end(); ++it) {
             Path curve;
@@ -293,19 +293,19 @@ public:
             else if (tmpStitches.size() > 0) {
                 if ((tmp.back() - tmpStitches.back()).length() < (tmp.back() - tmpStitches.front()).length()) {
                     std::reverse(tmpStitches.begin(), tmpStitches.end());
-                    std::cout << "Reversing tmp ordering" << std::endl;
+                    std::cerr << "Reversing tmp ordering" << std::endl;
                 }
                 tmp.insert(tmp.end(), tmpStitches.begin(), tmpStitches.end());
             }
-            //std::cout << "#it " << ii++ << std::endl;
+            //std::cerr << "#it " << ii++ << std::endl;
         }
-        std::cout << "Outline size: " << tmp.size() << std::endl;
+        std::cerr << "Outline size: " << tmp.size() << std::endl;
         lengthStats(tmp);
         tmp = purgeSmallStitches(tmp, discreteOutlineParam*0.9);
-        std::cout << "Outline size after purging: " << tmp.size() << std::endl;
+        std::cerr << "Outline size after purging: " << tmp.size() << std::endl;
         lengthStats(tmp);
         tmp = subDivideLargeStitches(tmp, discreteOutlineParam*1.5);
-        std::cout << "Outline size after subdividing: " << tmp.size() << std::endl;
+        std::cerr << "Outline size after subdividing: " << tmp.size() << std::endl;
         lengthStats(tmp);
 
         discreteOutline = tmp;
@@ -316,7 +316,7 @@ public:
         for (size_t ii = 0; ii+1 < points.size(); ++ii) {
             stat.push((points[ii] - points[ii+1]).length());
         }
-        std::cout << "Length stats: " << stat.print() << std::endl;
+        std::cerr << "Length stats: " << stat.print() << std::endl;
     }
 
     std::vector<std::pair<size_t, size_t> > endpointOutlineMatches(const std::vector<Point>& outline, const std::vector<std::vector<Point> >& lines) {
@@ -377,34 +377,34 @@ public:
         std::vector<Point> bestStitches;
         std::vector<std::vector<Point> > bestBridges;
         size_t bestCount = std::numeric_limits<size_t>::max();
-#pragma omp parallel for
+
         for (size_t ii = 0; ii < stitches.size(); ++ii) {
             std::vector<std::vector<Point> > currentBridgesRev;
             const std::vector<Point>currentStitchesRev = assembleStitches(stitches, currentBridgesRev, ii, true);
             const size_t currentCountRev = currentStitchesRev.size();
-#pragma omp critical
-            if (currentCountRev < bestCount) {
-                bestCount = currentCountRev;
-                bestStitches = currentStitchesRev;
-                bestBridges = currentBridgesRev;
-                std::cout << "New best stitches in iteration " << ii << ", reversed" << std::endl;
-                std::cout << "Stitches added by assembleStitches: " << bestCount - origCount
-                          << " (" << 100*static_cast<double>(bestCount - origCount)/origCount << "%)" << std::endl;
-                std::cout << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
-            }
-
             std::vector<std::vector<Point> > currentBridges;
             const std::vector<Point>currentStitches = assembleStitches(stitches, currentBridges, ii, false);
             const size_t currentCount = currentStitches.size();
-#pragma omp critical
-            if (currentCount < bestCount) {
-                bestCount = currentCount;
-                bestStitches = currentStitches;
-                bestBridges = currentBridges;
-                std::cout << "New best stitches in iteration " << ii << ", non-reversed" << std::endl;
-                std::cout << "Stitches added by assembleStitches: " << bestCount - origCount
-                          << " (" << 100*static_cast<double>(bestCount - origCount)/origCount << "%)" << std::endl;
-                std::cout << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+
+            {
+                if (currentCount < bestCount) {
+                    bestCount = currentCount;
+                    bestStitches = currentStitches;
+                    bestBridges = currentBridges;
+                    std::cerr << "New best stitches in iteration " << ii << ", non-reversed" << std::endl;
+                    std::cerr << "Stitches added by assembleStitches: " << bestCount - origCount
+                              << " (" << 100*static_cast<double>(bestCount - origCount)/origCount << "%)" << std::endl;
+                    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+                }
+                if (currentCountRev < bestCount) {
+                    bestCount = currentCountRev;
+                    bestStitches = currentStitchesRev;
+                    bestBridges = currentBridgesRev;
+                    std::cerr << "New best stitches in iteration " << ii << ", reversed" << std::endl;
+                    std::cerr << "Stitches added by assembleStitches: " << bestCount - origCount
+                              << " (" << 100*static_cast<double>(bestCount - origCount)/origCount << "%)" << std::endl;
+                    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+                }
             }
         }
 
@@ -459,7 +459,10 @@ public:
                 // We add the stitches along the way to the chosen option.
                 int direction = moduloDistDirection(lastPointOutline, option, discreteSize);
                 std::vector<Point> bridge;
-                for (int ii = static_cast<int>(lastPointOutline); ii != static_cast<int>(option); ii += direction) {
+                const std::size_t maxBridgeSize = discreteSize;
+                int ii = static_cast<int>(lastPointOutline);
+                while (ii != static_cast<int>(option)) {
+                    ii += direction;
                     if (ii < 0) {
                         ii = static_cast<int>(discreteSize) + ii;
                     }
@@ -467,6 +470,10 @@ public:
                         ii = 0;
                     }
                     bridge.push_back(discreteOutline[static_cast<size_t>(ii)]);
+                    if (bridge.size() > maxBridgeSize) {
+                        std::cerr << "Bridge has grown too large, maximum size is " << maxBridgeSize << ", lasPointOutline is " << lastPointOutline << ", option is " << option << ", direction is " << direction << std::endl;
+                        break;
+                    }
                 }
                 bridge.push_back(discreteOutline[option]);
                 // We remove unnecessary stitches from the bridge.
@@ -488,7 +495,8 @@ public:
                 if (bridge.size() == 1) {
                     const Point& bridgeElement = bridge.front();
                     const Point& nextLineStart = linePoints.front();
-                    if (dot(lastPoint - bridgeElement, nextLineStart - bridgeElement) > 0) {
+                    if (dot(lastPoint - bridgeElement, nextLineStart - bridgeElement) > 0
+                            || (lastPoint - nextLineStart).length() < stitchLength) {
                         bridge.clear();
                     }
                 }
@@ -502,9 +510,9 @@ public:
                 }
             }
             //else {
-                //std::cout << "added bridge stitches: " << bridge.size() << std::endl;
-                //patches.push_back(patch);
-                //patch.clear();
+            //std::cerr << "added bridge stitches: " << bridge.size() << std::endl;
+            //patches.push_back(patch);
+            //patch.clear();
             //}
             patch.insert(patch.end(), linePoints.begin(), linePoints.end());
             smallPatch.insert(smallPatch.end(), linePoints.begin(), linePoints.end());
@@ -596,7 +604,7 @@ public:
                     Path straightLine;
                     straightLine.append(_straightLine);
                     //straightLine.stitchTo(line[ii+1]);
-                    //std::cout << "straightLine: " << write_svg_path(straightLine) << std::endl;
+                    //std::cerr << "straightLine: " << write_svg_path(straightLine) << std::endl;
                     std::vector<PathIntersection> intersection = straightLine.intersect(outline);
                     Point intersectPoint = straightLine.pointAt(intersection[0].first);
                     newLine.push_back(intersectPoint);
@@ -609,7 +617,7 @@ public:
                     Path straightLine;
                     straightLine.append(_straightLine);
                     //straightLine.stitchTo(line[ii+1]);
-                    //std::cout << "straightLine: " << write_svg_path(straightLine) << std::endl;
+                    //std::cerr << "straightLine: " << write_svg_path(straightLine) << std::endl;
                     std::vector<PathIntersection> intersection = straightLine.intersect(outline);
                     Point intersectPoint = straightLine.pointAt(intersection[0].first);
                     newLine.push_back(intersectPoint);
@@ -631,7 +639,7 @@ public:
             }
         }
         stitches = newStitches;
-        std::cout << "Stitch lengh stats: " << stitchLength.print() << std::endl;
+        std::cerr << "Stitch lengh stats: " << stitchLength.print() << std::endl;
     }
 
 
@@ -666,7 +674,7 @@ public:
         //        }
         double currentOffset = 0;
         for (size_t ii = 0; ii < curves.size(); ++ii) {
-            stitches[ii] = vectorOffset(stitches[ii], currentOffset);
+            stitches[ii] = vectorOffsetOnCurve(stitches[ii], curves[ii], currentOffset);
             currentOffset = fmod(currentOffset + offset, 1.0);
         }
 
@@ -727,6 +735,29 @@ public:
         return result;
     }
 
+    /**
+     * @brief vectorOffset moves every point in a vector in the direction given by the difference between itself and the previous point.
+     * @param points The original points
+     * @param offset The relative offset, usually between -1 and 1
+     * @return The moved points.
+     */
+    std::vector<Point> vectorOffsetOnCurve(const std::vector<Point>& points, const Path& curve, const double offset = 0.0) {
+        std::vector<Point> result = points;
+        if (points.size() < 2) {
+            return result;
+        }
+        Point lastPoint = points[1];
+        for (size_t ii = 0; ii < points.size(); ++ii) {
+            PathTime t = curve.nearestTime(result[ii]);
+            const double distance = (lastPoint - points[ii]).length();
+            result[ii] = getOffsettedPointOnCurve(curve, t, offset * distance);
+
+            lastPoint = points[ii];
+        }
+
+        return result;
+    }
+
     bool isInsidePoint(const Point p) {
         return 0 != outline.winding(p);
     }
@@ -763,8 +794,8 @@ public:
             currentPoint = getOffsettedPointOnCurve(curve, t, stitchLength);
             curvePoints.push_back(currentPoint);
             stat.push((currentPoint - lastPoint).length());
-            //std::cout << "Size: " << curvePoints.size() << std::endl;
-            //std::cout << currentPoint << std::endl;
+            //std::cerr << "Size: " << curvePoints.size() << std::endl;
+            //std::cerr << currentPoint << std::endl;
 
             if (0.01 > (currentPoint - curve.finalPoint()).length()
                     || stitchLength/2 > (currentPoint - lastPoint).length()
@@ -783,7 +814,7 @@ public:
             }
             lastPoint = currentPoint;
         }
-        //std::cout << "getStitches lengths: " << stat.print() << std::endl;
+        //std::cerr << "getStitches lengths: " << stat.print() << std::endl;
     }
 
     Point getOffsettedPointOnCurve(const Path& curve, PathTime& t, const double targetOffset) {
@@ -796,7 +827,7 @@ public:
         Point projection = curve.pointAt(projectionTime);
 
         t = projectionTime;
-        //std::cout << "Relative error after 1 projection: " << std::abs(1.0 - (data[0] - projection).length() / stitchLength) << std::endl;
+        //std::cerr << "Relative error after 1 projection: " << std::abs(1.0 - (data[0] - projection).length() / stitchLength) << std::endl;
 
         double offset = targetOffset - (data[0] - projection).length();
 
@@ -811,7 +842,7 @@ public:
             projectionTime = curve.nearestTime(secondGuess);
 
             projection = curve.pointAt(projectionTime);
-            //std::cout << "Relative error after " << 2 + ii << " projections: " << std::abs(1.0 - (data[0] - projection).length() / targetOffset) << std::endl;
+            //std::cerr << "Relative error after " << 2 + ii << " projections: " << std::abs(1.0 - (data[0] - projection).length() / targetOffset) << std::endl;
         }
         t = projectionTime;
         return projection;
@@ -848,7 +879,7 @@ public:
         }
 
         curves.insert(curves.end(), lefts.begin(), lefts.end());
-        std::cout << "We now have " << curves.size() << " curves" << std::endl;
+        std::cerr << "We now have " << curves.size() << " curves" << std::endl;
     }
 
     void write(const char* filename) {

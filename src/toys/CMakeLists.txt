@@ -20,7 +20,7 @@ ADD_DEFINITIONS(
     -fopenmp
 )
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g -ggdb -O2 -fopenmp")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g -ggdb -O0 -fopenmp")
 
 SET(2GEOM_TOYS-2_SRC
 2dsb2d
@@ -99,6 +99,7 @@ pw-compose-test
 pw-funcs
 pw-toy
 rdm-area
+read1
 rect_01
 rect_02
 rect_03
