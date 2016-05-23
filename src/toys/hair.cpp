@@ -34,8 +34,8 @@ int main(int argc, char **argv) {
     if (argc > 1) {
         std::cout << "Argument 1: " << argv[1] << std::endl;
     }
-    PathVector boundary = read_svgd("svgd/hair2-boundary.svgd");
-    PathVector curve = read_svgd("svgd/hair2-line.svgd");
+    PathVector boundary = read_svgd("svgd/hair-boundary.svgd");
+    PathVector curve = read_svgd("svgd/hair-line.svgd");
 
     Hair hair(boundary[0], curve[0]);
 

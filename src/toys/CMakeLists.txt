@@ -22,6 +22,8 @@ ADD_DEFINITIONS(
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g -ggdb -O0 -fopenmp")
 
+set_source_files_properties(hair.cpp PROPERTIES COMPILE_FLAGS "-std=c++11 -g -ggdb -O0")
+
 SET(2GEOM_TOYS-2_SRC
 2dsb2d
 aa

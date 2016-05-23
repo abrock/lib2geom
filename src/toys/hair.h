@@ -33,6 +33,7 @@
 using namespace Geom;
 
 class Hair {
+    typedef char BOOL;
 private:
     /**
      * @brief outline is the (closed) path which later contains all the hair curves
@@ -53,7 +54,12 @@ private:
      */
     Coord offset = .31;
 
-    double lineSpacing = 1.0/4.5;
+    double lineSpacing = .5;
+
+    /**
+     * @brief areaGrow Make the area larger.
+     */
+    double areaGrow = 2.0;
 
     /**
      * @brief miter Miter limit for the Inkscape::half_outline method. Paths are expected to be smooth so this limit shouldn't do anything at all.
@@ -80,12 +86,14 @@ private:
 
     double maxStitchLength = 10;
 
+    double minStitchLength = 1;
+
     std::vector<double> initialStichLengths;
     double initialStitchLengthsSum;
 
     std::mt19937_64 generator;
 
-    double discreteOutlineParam = stitchLength;
+    double discreteOutlineParam = 2;
     std::vector<Point> discreteOutline;
 
     std::vector<std::vector<Point> > bridges;
@@ -148,6 +156,8 @@ public:
     void run() {
         clock_t start = clock();
         std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+
+        //makeAreaLarger(outline, areaGrow);
 
         clock_t start2 = clock();
         getBoundaryDiscretization();
@@ -301,10 +311,10 @@ public:
         }
         std::cerr << "Outline size: " << tmp.size() << std::endl;
         lengthStats(tmp);
-        tmp = purgeSmallStitches(tmp, discreteOutlineParam*0.9);
+        //tmp = purgeSmallStitches(tmp, discreteOutlineParam*0.1);
         std::cerr << "Outline size after purging: " << tmp.size() << std::endl;
         lengthStats(tmp);
-        tmp = subDivideLargeStitches(tmp, discreteOutlineParam*1.5);
+        //tmp = subDivideLargeStitches(tmp, discreteOutlineParam*1.5);
         std::cerr << "Outline size after subdividing: " << tmp.size() << std::endl;
         lengthStats(tmp);
 
@@ -378,35 +388,60 @@ public:
         std::vector<std::vector<Point> > bestBridges;
         size_t bestCount = std::numeric_limits<size_t>::max();
 
-        for (size_t ii = 0; ii < stitches.size(); ++ii) {
-            std::vector<std::vector<Point> > currentBridgesRev;
-            const std::vector<Point>currentStitchesRev = assembleStitches(stitches, currentBridgesRev, ii, true);
-            const size_t currentCountRev = currentStitchesRev.size();
-            std::vector<std::vector<Point> > currentBridges;
-            const std::vector<Point>currentStitches = assembleStitches(stitches, currentBridges, ii, false);
-            const size_t currentCount = currentStitches.size();
+        typedef char BOOL;
+        std::vector<BOOL> shouldCheck(stitches.size(), false);
+        std::vector<BOOL> hasChecked(stitches.size(), false);
+        shouldCheck.front() = true;
+        shouldCheck.back() = true;
 
-            {
-                if (currentCount < bestCount) {
-                    bestCount = currentCount;
-                    bestStitches = currentStitches;
-                    bestBridges = currentBridges;
-                    std::cerr << "New best stitches in iteration " << ii << ", non-reversed" << std::endl;
-                    std::cerr << "Stitches added by assembleStitches: " << bestCount - origCount
-                              << " (" << 100*static_cast<double>(bestCount - origCount)/origCount << "%)" << std::endl;
-                    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+        while (true) {
+            bool checkInLastIteration = false;
+
+            for (size_t ii = 0; ii < stitches.size(); ++ii) {
+                if (!shouldCheck[ii] || hasChecked[ii]) {
+                    continue;
                 }
-                if (currentCountRev < bestCount) {
-                    bestCount = currentCountRev;
-                    bestStitches = currentStitchesRev;
-                    bestBridges = currentBridgesRev;
-                    std::cerr << "New best stitches in iteration " << ii << ", reversed" << std::endl;
-                    std::cerr << "Stitches added by assembleStitches: " << bestCount - origCount
-                              << " (" << 100*static_cast<double>(bestCount - origCount)/origCount << "%)" << std::endl;
-                    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+                hasChecked[ii] = true;
+                checkInLastIteration = true;
+
+                {
+                    std::vector<std::vector<Point> > currentBridges;
+                    const std::vector<Point> currentStitches = assembleStitches(stitches, currentBridges, ii, false, shouldCheck);
+                    const size_t currentCount = currentStitches.size();
+                    if (currentCount < bestCount) {
+                        bestCount = currentCount;
+                        bestStitches = currentStitches;
+                        bestBridges = currentBridges;
+                        std::cerr << "New best stitches in iteration " << ii << ", non-reversed" << std::endl;
+                        std::cerr << "Stitches added by assembleStitches: " << bestCount - origCount
+                                  << " (" << 100*static_cast<double>(bestCount - origCount)/origCount << "%)" << std::endl;
+                        std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+                    }
+                }
+                {
+                    std::vector<std::vector<Point> > currentBridges;
+                    const std::vector<Point>currentStitches = assembleStitches(stitches, currentBridges, ii, true, shouldCheck);
+                    const size_t currentCount = currentStitches.size();
+                    if (currentCount < bestCount) {
+                        bestCount = currentCount;
+                        bestStitches = currentStitches;
+                        bestBridges = currentBridges;
+                        std::cerr << "New best stitches in iteration " << ii << ", non-reversed" << std::endl;
+                        std::cerr << "Stitches added by assembleStitches: " << bestCount - origCount
+                                  << " (" << 100*static_cast<double>(bestCount - origCount)/origCount << "%)" << std::endl;
+                        std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+                    }
                 }
             }
+            if (!checkInLastIteration) {
+                break;
+            }
         }
+        RunningStats checkedLines;
+        for (auto val : hasChecked) {
+            checkedLines.push(val ? 1 : 0);
+        }
+        std::cout << "Checked lines: " << checkedLines.print() << std::endl;
 
         stitches.clear();
         stitches.push_back(bestStitches);
@@ -414,13 +449,14 @@ public:
     }
 
 
-    std::vector<Point> assembleStitches(const std::vector<std::vector<Point> >& stitches, std::vector<std::vector<Point> >& bridges, const size_t initialLine, const bool reverseInitial = false) {
+    std::vector<Point> assembleStitches(const std::vector<std::vector<Point> >& stitches, std::vector<std::vector<Point> >& bridges, const size_t initialLine, const bool reverseInitial, std::vector<BOOL>& shouldCheck) {
         // vector<bool> is slow in this case, the memory saving doesn't seem
         // to outweigh the bit manipulation.
         typedef char BOOL;
         std::vector<BOOL> visited(stitches.size(), false);
         visited[initialLine] = true;
         std::vector<Point> patch = stitches[initialLine];
+        patch.reserve((stitches.size() * 4) / 3);
         bridges.clear();
         if (reverseInitial) {
             std::reverse(patch.begin(), patch.end());
@@ -431,6 +467,8 @@ public:
         std::vector<Point> smallPatch;
 
         int lastLine = -1;
+        std::vector<Point> bridge;
+        bridge.reserve(128);
         while (true) {
             const Point& lastPoint = patch.back();
             int currentLine = getNearestLine(lastPoint, visited, stitches);
@@ -441,7 +479,10 @@ public:
             }
             size_t line = static_cast<size_t>(currentLine);
             visited[line] = true;
-            std::vector<Point> linePoints = stitches[line];
+            const std::vector<Point> &linePoints = stitches[line];
+            bridge.clear();
+            bridge.reserve(128);
+            bool reverseCurrentLine = false;
             //if (maxStitchLength < (lastPoint - linePoints.front()).length()) {
             {
                 // Now we need to find a path along the outline from the lastPoint to the current line.
@@ -454,11 +495,11 @@ public:
                 if (moduloDist(lastPointOutline, frontOption, discreteSize)
                         > moduloDist(lastPointOutline, backOption, discreteSize)) {
                     option = backOption;
-                    std::reverse(linePoints.begin(), linePoints.end());
+                    reverseCurrentLine = true;
                 }
                 // We add the stitches along the way to the chosen option.
                 int direction = moduloDistDirection(lastPointOutline, option, discreteSize);
-                std::vector<Point> bridge;
+
                 const std::size_t maxBridgeSize = discreteSize;
                 int ii = static_cast<int>(lastPointOutline);
                 while (ii != static_cast<int>(option)) {
@@ -477,36 +518,42 @@ public:
                 }
                 bridge.push_back(discreteOutline[option]);
                 // We remove unnecessary stitches from the bridge.
+                const Point& nextLineStart = reverseCurrentLine ? linePoints.back() : linePoints.front();
                 if (bridge.size() > 1) {
                     const Point& lastBridge = bridge.back();
                     const Point& lastlastBridge = bridge[bridge.size()-2];
-                    const Point& nextLineStart = linePoints.front();
-                    if (dot(lastlastBridge - lastBridge, nextLineStart - lastBridge) > 0) {
+                    if (dot(lastlastBridge - lastBridge, nextLineStart - lastBridge) > 0
+                            && (lastlastBridge - nextLineStart).length() < stitchLength/2) {
                         bridge.pop_back();
                     }
                 }
                 if (bridge.size() > 1) {
                     const Point& firstBridge = bridge.front();
                     const Point& secondBridge = bridge[1];
-                    if (dot(secondBridge - firstBridge, lastPoint - firstBridge) > 0) {
+                    if (dot(secondBridge - firstBridge, lastPoint - firstBridge) > 0
+                            && (secondBridge - lastPoint).length() < stitchLength/2) {
                         bridge.erase(bridge.begin());
                     }
                 }
                 if (bridge.size() == 1) {
                     const Point& bridgeElement = bridge.front();
-                    const Point& nextLineStart = linePoints.front();
                     if (dot(lastPoint - bridgeElement, nextLineStart - bridgeElement) > 0
-                            || (lastPoint - nextLineStart).length() < stitchLength) {
+                            || (lastPoint - nextLineStart).length() < stitchLength/3) {
                         bridge.clear();
                     }
                 }
-                if (bridge.size() > 0) {
+                if (!bridge.empty()) {
                     bridges.push_back(bridge);
                     patch.insert(patch.end(), bridge.begin(), bridge.end());
-                }
-                if (!bridge.empty()) {
                     patches.push_back(smallPatch);
                     smallPatch.clear();
+                    //shouldCheck[line] = true;
+                    if (static_cast<size_t>(currentLine) >= shouldCheck.size()) {
+                        std::cerr << "Error: shouldCheck.size: " << shouldCheck.size() << ", currentLine: " << currentLine << std::endl;
+                    }
+                    else {
+                        shouldCheck[static_cast<size_t>(currentLine)] = true;
+                    }
                 }
             }
             //else {
@@ -514,13 +561,18 @@ public:
             //patches.push_back(patch);
             //patch.clear();
             //}
-            patch.insert(patch.end(), linePoints.begin(), linePoints.end());
-            smallPatch.insert(smallPatch.end(), linePoints.begin(), linePoints.end());
+            if (reverseCurrentLine) {
+                patch.insert(patch.end(), linePoints.rbegin(), linePoints.rend());
+                smallPatch.insert(smallPatch.end(), linePoints.rbegin(), linePoints.rend());
+            }
+            else {
+                patch.insert(patch.end(), linePoints.begin(), linePoints.end());
+                smallPatch.insert(smallPatch.end(), linePoints.begin(), linePoints.end());
+            }
         }
         return patch;
     }
 
-    template<class BOOL>
     int getNearestLine(const Point& p, const std::vector<BOOL>& visited, const std::vector<std::vector<Point> >& lines) {
         int result = -1;
         double bestDistance = std::numeric_limits<double>::max();
@@ -540,7 +592,6 @@ public:
         return result;
     }
 
-    template<class BOOL>
     int getNextLine(const int lastLine, const Point& p, const std::vector<BOOL>& visited, const std::vector<std::vector<Point> >& lines) {
         if (lastLine < 0) {
             return 0;
@@ -599,40 +650,38 @@ public:
                     stitchLength.push((line[ii] - line[ii+1]).length());
                     continue;
                 }
+                BezierCurve _straightLine = BezierCurveN<1>(line[ii], line[ii+1]);
+                Path straightLine;
+                straightLine.append(_straightLine);
+                std::vector<PathIntersection> intersection = straightLine.intersect(outline);
                 if (inside[ii] && !inside[ii+1]) {
-                    BezierCurve _straightLine = BezierCurveN<1>(line[ii], line[ii+1]);
-                    Path straightLine;
-                    straightLine.append(_straightLine);
                     //straightLine.stitchTo(line[ii+1]);
                     //std::cerr << "straightLine: " << write_svg_path(straightLine) << std::endl;
-                    std::vector<PathIntersection> intersection = straightLine.intersect(outline);
                     Point intersectPoint = straightLine.pointAt(intersection[0].first);
                     newLine.push_back(intersectPoint);
+                    if (lineLength(newLine) > minStitchLength) {
 #pragma omp critical
-                    {newStitches.push_back(newLine);}
+                        {newStitches.push_back(newLine);}
+                    }
                     newLine.clear();
                 }
                 if (!inside[ii] && inside[ii+1]) {
-                    BezierCurve _straightLine = BezierCurveN<1>(line[ii], line[ii+1]);
                     Path straightLine;
                     straightLine.append(_straightLine);
                     //straightLine.stitchTo(line[ii+1]);
                     //std::cerr << "straightLine: " << write_svg_path(straightLine) << std::endl;
-                    std::vector<PathIntersection> intersection = straightLine.intersect(outline);
                     Point intersectPoint = straightLine.pointAt(intersection[0].first);
                     newLine.push_back(intersectPoint);
                     newLine.push_back(line[ii+1]);
                 }
                 if (!inside[ii] && !inside[ii+1]) {
-                    BezierCurve _straightLine = BezierCurveN<1>(line[ii], line[ii+1]);
-                    Path straightLine;
-                    straightLine.append(_straightLine);
-                    std::vector<PathIntersection> intersection = straightLine.intersect(outline);
-                    if (2 == intersection.size()) {
+                    if (2 <= intersection.size()) {
                         newLine.push_back(straightLine.pointAt(intersection[0].first));
                         newLine.push_back(straightLine.pointAt(intersection[1].first));
+                        if (lineLength(newLine) > minStitchLength) {
 #pragma omp critical
-                        {newStitches.push_back(newLine);}
+                            {newStitches.push_back(newLine);}
+                        }
                         newLine.clear();
                     }
                 }
@@ -640,6 +689,14 @@ public:
         }
         stitches = newStitches;
         std::cerr << "Stitch lengh stats: " << stitchLength.print() << std::endl;
+    }
+
+    double lineLength(const std::vector<Point>& points) {
+        double result = 0;
+        for (size_t ii = 1; ii < points.size(); ++ii) {
+            result += (points[ii-1] - points[ii]).length();
+        }
+        return result;
     }
 
 
@@ -848,6 +905,10 @@ public:
         return projection;
     }
 
+    void makeAreaLarger(Path& curve, const double offset) {
+        curve = Inkscape::half_outline(curve, offset, miter);
+    }
+
     void getCurves() {
 
         Path left = curve;
@@ -913,8 +974,11 @@ public:
         out << "<g>";
         writePatches(out, stitches);
         out << "</g>";
-        //write(out, getPath(discreteOutline), "ff0000");
-        //writeCircles(out, discreteOutline, stitchPointRadius, "ff0000");
+
+        out << "<g>";
+        write(out, getPath(discreteOutline), "ff0000");
+        writeCircles(out, discreteOutline, stitchPointRadius, "ff0000");
+        out << "</g>";
 
         out << "<g>";
         writePatches(out, bridges);
