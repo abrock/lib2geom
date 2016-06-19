@@ -189,4 +189,12 @@ IF(2GEOM_TOYS)
     ENDFOREACH(source)
 ENDIF(2GEOM_TOYS)
 
-target_link_libraries(hair-test gtest gtest_main)
+add_library(hair_impl hair-impl.cpp)
+add_library(memoryConsumption memoryconsumption.cpp)
+add_library(geom-pathstroke geom-pathstroke.cpp)
+
+target_link_libraries(hair_impl 2geom)
+
+target_link_libraries(hair-test 2geom gtest gtest_main hair_impl memoryConsumption geom-pathstroke)
+target_link_libraries(hair 2geom hair_impl memoryConsumption geom-pathstroke)
+

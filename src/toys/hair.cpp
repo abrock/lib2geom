@@ -21,7 +21,7 @@
 #include <fstream>
 #include <random>
 
-#include "geom-pathstroke.cpp"
+#include "geom-pathstroke.h"
 
 #include "RunningStats.h"
 
@@ -34,15 +34,15 @@ int main(int argc, char **argv) {
     if (argc > 1) {
         std::cout << "Argument 1: " << argv[1] << std::endl;
     }
-    PathVector boundary = read_svgd("svgd/hair-boundary.svgd");
-    PathVector curve = read_svgd("svgd/hair-line.svgd");
+    PathVector boundary = read_svgd("svgd/tail-outline-1.svgd");
+    PathVector curve = read_svgd("svgd/tail-curve.svgd");
 
     Hair hair(boundary[0], curve[0]);
 
 
     hair.run();
-    hair.write("hair2-results.svg");
-    hair.writeStitches("hair2-results.txt");
+    hair.write("tail-1-results.svg");
+    hair.writeStitches("tail-1-results.txt");
 
     return 0;
 }
