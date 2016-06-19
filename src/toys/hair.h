@@ -55,7 +55,7 @@ private:
      */
     Coord offset = .31;
 
-    double lineSpacing = 10;
+    double lineSpacing = 2;
 
     /**
      * @brief areaGrow Make the area larger.

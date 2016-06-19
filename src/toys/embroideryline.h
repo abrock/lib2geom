@@ -56,7 +56,7 @@ public:
     }
 
     friend bool operator< (const OutlineIntersection &c1, const OutlineIntersection &c2) {
-        return c1 < c2;
+        return c1.time < c2.time;
     }
 
 };

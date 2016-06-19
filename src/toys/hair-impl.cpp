@@ -882,9 +882,9 @@ void Hair::write(std::ostream& out) {
         << "  xmlns=\"http://www.w3.org/2000/svg\""
         << "  xmlns:sodipodi=\"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd\""
         << "  xmlns:inkscape=\"http://www.inkscape.org/namespaces/inkscape\""
-        << "  width=\"300mm\""
-        << "  height=\"250mm\""
-        << "  viewBox=\"0 0 300 250\""
+        << "  width=\"400mm\""
+        << "  height=\"350mm\""
+        << "  viewBox=\"0 0 400 350\""
         << "  id=\"svg12765\""
         << "  version=\"1.1\">";
     out << "<g>";
