@@ -31,7 +31,7 @@
 
 #include "embroideryline.h"
 
-#include "embroiderypatch.h"
+#include "embroideryarea.h"
 
 using namespace Geom;
 

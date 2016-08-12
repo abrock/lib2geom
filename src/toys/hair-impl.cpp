@@ -890,19 +890,21 @@ void Hair::getCurves() {
 
     Path left = curve;
     Path right = curve.reversed();
-#pragma omp parallel sections
+//#pragma omp parallel sections
+    // These sections seem independent but somehow they are not
+    // and the program crashes with a segfault some times when run in parallel
     {
-#pragma omp section
+//#pragma omp section
         {
             for (size_t ii = 0; ii < maxIter; ++ii) {
                 left = Inkscape::half_outline(left, lineSpacing, miter);
                 if (left.intersect(outline).empty()) {
                     break;
                 }
-                lefts.push_back(left.reversed());
+                lefts.push_back(left);
             }
         }
-#pragma omp section
+//#pragma omp section
         {
             for (size_t ii = 0; ii < maxIter; ++ii) {
                 right = Inkscape::half_outline(right, lineSpacing, miter);
