@@ -31,6 +31,8 @@
 
 #include "embroideryline.h"
 
+#include "embroiderypatch.h"
+
 using namespace Geom;
 
 class Hair {
@@ -103,6 +105,8 @@ private:
 
     std::vector<OutlineIntersection> intersections;
 
+    std::vector<EmbroideryPatch> patches;
+
 public:
 
     void writeOutlineIntersections(std::ostream& out, std::vector<OutlineIntersection> &intersections);
@@ -155,6 +159,8 @@ public:
     int moduloDistDirection(const size_t _a, const size_t _b, const size_t _total);
 
     void assembleStitches();
+
+    void assemblePatches();
 
     std::vector<Point> assembleStitches(
             const std::vector<std::vector<Point> >& stitches,

@@ -60,14 +60,8 @@ void Hair::run() {
     //makeAreaLarger(outline, areaGrow);
 
     clock_t start2 = clock();
-    getBoundaryDiscretization();
-    clock_t stop2 = clock();
-    std::cerr << "getBoundaryDiscretization took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
-
-    start2 = clock();
     getCurves();
-    stop2 = clock();
+    clock_t stop2 = clock();
     std::cerr << "getCurves took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
     std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
 
@@ -82,6 +76,13 @@ void Hair::run() {
     stop2 = clock();
     std::cerr << "purgeOutside took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
     std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+
+    start2 = clock();
+    assemblePatches();
+    stop2 = clock();
+    std::cerr << "assemblePatches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+
 
     start2 = clock();
     assembleStitches();
@@ -104,6 +105,14 @@ void Hair::run() {
 
     clock_t stop = clock();
     std::cerr << "Calculation took " << (static_cast<double>(stop-start)) / CLOCKS_PER_SEC << std::endl << std::endl;
+}
+
+void Hair::assemblePatches() {
+    std::vector<std::vector<BOOL> > visited(levels.size());
+    for (size_t level = 0; level < levels.size(); ++level) {
+        std::cout << "We have " << levels[level].size() << " lines on level " << level << std::endl;
+        visited[level] = std::vector<BOOL>(levels[level].size(), false);
+    }
 }
 
 size_t Hair::countStitches() {
@@ -188,6 +197,40 @@ std::vector<Point> Hair::subDivideLargeStitches(const std::vector<Point>& orig, 
     }
     return result;
 }
+
+/*
+void Hair::getBoundaryDiscretization() {
+    std::cerr << "########### getBoundaryDiscretization ###########" << std::endl;
+    std::vector<Point> tmp;
+    for (auto it = outline.begin(); it != outline.end(); ++it) {
+        Path curve;
+        curve.append(*it);
+        std::vector<Point> tmpStitches;
+        getStitches(tmpStitches, curve, discreteOutlineParam);
+        if (tmp.empty()) {
+            tmp = tmpStitches;
+        }
+        else if (tmpStitches.size() > 0) {
+            if ((tmp.back() - tmpStitches.back()).length() < (tmp.back() - tmpStitches.front()).length()) {
+                std::reverse(tmpStitches.begin(), tmpStitches.end());
+                std::cerr << "Reversing tmp ordering" << std::endl;
+            }
+            tmp.insert(tmp.end(), tmpStitches.begin(), tmpStitches.end());
+        }
+        //std::cerr << "#it " << ii++ << std::endl;
+    }
+    std::cerr << "Outline size: " << tmp.size() << std::endl;
+    lengthStats(tmp);
+    //tmp = purgeSmallStitches(tmp, discreteOutlineParam*0.1);
+    std::cerr << "Outline size after purging: " << tmp.size() << std::endl;
+    lengthStats(tmp);
+    //tmp = subDivideLargeStitches(tmp, discreteOutlineParam*1.5);
+    std::cerr << "Outline size after subdividing: " << tmp.size() << std::endl;
+    lengthStats(tmp);
+
+    discreteOutline = tmp;
+}
+// */
 
 void Hair::getBoundaryDiscretization() {
     std::cerr << "########### getBoundaryDiscretization ###########" << std::endl;
@@ -534,6 +577,7 @@ void Hair::purgeOutside() {
 #pragma omp parallel for
     for (size_t level = 0; level < stitches.size(); ++level) {
         const std::vector<Point>& line = stitches[level];
+        levels[level].reserve(line.size());
         if (line.size() < 2) {
             continue;
         }
@@ -560,13 +604,14 @@ void Hair::purgeOutside() {
                 //straightLine.stitchTo(line[ii+1]);
                 //std::cerr << "straightLine: " << write_svg_path(straightLine) << std::endl;
                 Point intersectPoint = straightLine.pointAt(intersection[0].first);
-                endInter = OutlineIntersection(outline, intersection[0].second, level);
                 newLine.push_back(intersectPoint);
                 if (lineLength(newLine) > minStitchLength) {
 #pragma omp critical
                     {
                         newStitches.push_back(newLine);
                         levels[level].push_back(EmbroideryLine(newLine, level, startInter, endInter));
+                        startInter.line = &levels[level].back();
+                        endInter.line = &levels[level].back();
                         intersections.push_back(startInter);
                         intersections.push_back(endInter);
                     }
@@ -596,6 +641,8 @@ void Hair::purgeOutside() {
                         {
                             newStitches.push_back(newLine);
                             levels[level].push_back(EmbroideryLine(newLine, level, startInter, endInter));
+                            startInter.line = &levels[level].back();
+                            endInter.line = &levels[level].back();
                             intersections.push_back(startInter);
                             intersections.push_back(endInter);
                         }
@@ -609,6 +656,8 @@ void Hair::purgeOutside() {
     std::cout << "Number of intersections: " << intersections.size() << std::endl;
     std::sort(intersections.begin(), intersections.end());
     std::cerr << "Stitch lengh stats: " << stitchLength.print() << std::endl;
+
+    getBoundaryDiscretization();
 }
 
 double Hair::lineLength(const std::vector<Point>& points) {
@@ -779,6 +828,7 @@ void Hair::getStitches(Points& curvePoints, const Path& curve, const double stit
         //std::cerr << "Size: " << curvePoints.size() << std::endl;
         //std::cerr << currentPoint << std::endl;
 
+        // Test if we have reached the end of the curve
         if (0.01 > (currentPoint - curve.finalPoint()).length()
                 || stitchLength/2 > (currentPoint - lastPoint).length()
                 || stitchLength*2 < (currentPoint - lastPoint).length()) {
@@ -802,7 +852,7 @@ void Hair::getStitches(Points& curvePoints, const Path& curve, const double stit
 Point Hair::getOffsettedPointOnCurve(const Path& curve, PathTime& t, const double targetOffset) {
     std::vector<Point> data = curve.at(t.curve_index).pointAndDerivatives(t.t, 1);
 
-    Point initialGuess = data[0] + data[1] * targetOffset / data[1].length();
+    Point initialGuess = data[0] + data[1] * (targetOffset / data[1].length());
 
     PathTime projectionTime = curve.nearestTime(initialGuess);
 
@@ -836,18 +886,21 @@ void Hair::makeAreaLarger(Path& curve, const double offset) {
 
 void Hair::getCurves() {
 
-    Path left = curve;
-    Path right = curve.reversed();
     PathVector rights, lefts;
 
+    Path left = curve;
+    Path right = curve.reversed();
 #pragma omp parallel sections
     {
-        for (size_t ii = 0; ii < maxIter; ++ii) {
-            left = Inkscape::half_outline(left, lineSpacing, miter);
-            if (left.intersect(outline).empty()) {
-                break;
+#pragma omp section
+        {
+            for (size_t ii = 0; ii < maxIter; ++ii) {
+                left = Inkscape::half_outline(left, lineSpacing, miter);
+                if (left.intersect(outline).empty()) {
+                    break;
+                }
+                lefts.push_back(left.reversed());
             }
-            lefts.push_back(left);
         }
 #pragma omp section
         {

@@ -15,6 +15,8 @@
 
 using namespace Geom;
 
+class EmbroideryLine;
+
 class OutlineIntersection {
 public:
     /**
@@ -31,6 +33,8 @@ public:
      * @brief height The height of the intersection, i.e. the index of the original curve
      */
     size_t height;
+
+    EmbroideryLine* line;
 
     OutlineIntersection(Path& _outline, const PathTime _time, const size_t _height):
         outline(_outline),
