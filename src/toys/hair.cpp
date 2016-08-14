@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
     Hair hair(boundary[0], curve[0]);
 
 
-    hair.run();
+    hair.run2();
     hair.write("tail-1-results.svg");
     hair.writeStitches("tail-1-results.txt");
 

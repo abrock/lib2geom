@@ -107,12 +107,59 @@ void Hair::run() {
     std::cerr << "Calculation took " << (static_cast<double>(stop-start)) / CLOCKS_PER_SEC << std::endl << std::endl;
 }
 
+void Hair::run2() {
+    clock_t start = clock();
+    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+
+    //makeAreaLarger(outline, areaGrow);
+
+    clock_t start2 = clock();
+    getCurves();
+    clock_t stop2 = clock();
+    std::cerr << "getCurves took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+
+    start2 = clock();
+    getStitches();
+    stop2 = clock();
+    std::cerr << "getStitches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+
+    start2 = clock();
+    purgeOutside();
+    stop2 = clock();
+    std::cerr << "purgeOutside took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+
+    start2 = clock();
+    assemblePatches();
+    stop2 = clock();
+    std::cerr << "assemblePatches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+
+    clock_t stop = clock();
+    std::cerr << "Calculation took " << (static_cast<double>(stop-start)) / CLOCKS_PER_SEC << std::endl << std::endl;
+}
+
 void Hair::assemblePatches() {
     std::vector<std::vector<BOOL> > visited(levels.size());
+    bool foundFirstUnvisited = false;
+    size_t firstUnvisitedLevel = 0;
     for (size_t level = 0; level < levels.size(); ++level) {
-        std::cout << "We have " << levels[level].size() << " lines on level " << level << std::endl;
+        if (!foundFirstUnvisited && !levels[level].empty()) {
+            foundFirstUnvisited = true;
+            firstUnvisitedLevel = level;
+        }
+        std::cout << "We have " << levels[level].size() << " lines on level " << level << ": ";
+        for (size_t ii = 0; ii < levels[level].size(); ++ii) {
+            std::cout << levels[level][ii].size() << ", ";
+        }
+        std::cout << std::endl;
         visited[level] = std::vector<BOOL>(levels[level].size(), false);
     }
+    EmbroideryLine& firstUnvisited = levels[firstUnvisitedLevel][0];
+
+
 }
 
 size_t Hair::countStitches() {
@@ -655,6 +702,31 @@ void Hair::purgeOutside() {
     stitches = newStitches;
     std::cout << "Number of intersections: " << intersections.size() << std::endl;
     std::sort(intersections.begin(), intersections.end());
+    for (EmbroideryLineLevel & level : levels) {
+        for (EmbroideryLine & line : level) {
+            auto it = std::find(intersections.begin(), intersections.end(), line.startInter);
+            if (intersections.end() == it) {
+                std::cerr << "Couldn't find the intersection in the intersections vector in file "
+                          << __FILE__ << ", line " << __LINE__ << std::endl
+                          << line << std::endl;
+            }
+            else {
+                it->index = it - intersections.begin();
+                line.endInter.index = it->index;
+            }
+
+            it = std::find(intersections.begin(), intersections.end(), line.endInter);
+            if (intersections.end() == it) {
+                std::cerr << "Couldn't find the intersection in the intersections vector in file "
+                          << __FILE__ << ", line " << __LINE__ << std::endl
+                          << line << std::endl;
+            }
+            else {
+                it->index = it - intersections.begin();
+            }
+
+        }
+    }
     std::cerr << "Stitch lengh stats: " << stitchLength.print() << std::endl;
 
     getBoundaryDiscretization();
@@ -928,7 +1000,7 @@ void Hair::write(const char* filename) {
     write(out);
 }
 
-void Hair::write(std::ostream& out) {
+void writeSVGHead(std::ostream& out) {
     out << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?><svg" << std::endl
         << "   xmlns:dc=\"http://purl.org/dc/elements/1.1/\""
         << "  xmlns:cc=\"http://creativecommons.org/ns#\""
@@ -942,6 +1014,10 @@ void Hair::write(std::ostream& out) {
         << "  viewBox=\"0 0 400 350\""
         << "  id=\"svg12765\""
         << "  version=\"1.1\">";
+}
+
+void Hair::write(std::ostream& out) {
+    writeSVGHead(out);
     out << "<g>";
     for (auto c : curves) {
         write(out, c, "aaaaaa");

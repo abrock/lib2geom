@@ -47,7 +47,7 @@ public:
      * @brief index Index of the intersection in the ordered set of intersections with the outline.
      * This allows to check if two intersections are next to each other
      */
-    size_t index = 0;
+    mutable size_t index = 0;
 
     OutlineIntersection& operator=(OutlineIntersection b) {
         index = b.index;
@@ -61,6 +61,15 @@ public:
 
     friend bool operator< (const OutlineIntersection &c1, const OutlineIntersection &c2) {
         return c1.time < c2.time;
+    }
+
+    friend bool operator == (const OutlineIntersection &c1, const OutlineIntersection &c2) {
+        return c1.time == c2.time;
+    }
+
+    friend std::ostream& operator << (std::ostream& out, const OutlineIntersection& obj) {
+        out << "Time: " << obj.time << ", height: " << obj.height;
+        return out;
     }
 
 };
@@ -101,7 +110,14 @@ public:
         level(_level),
         startInter(_startInter),
         endInter(_endInter) {
-        //insert(begin(), stitches.begin(), stitches.end());
+        insert(begin(), stitches.begin(), stitches.end());
+    }
+
+    friend std::ostream& operator << (std::ostream& out, const EmbroideryLine& obj) {
+        out << " Level: " << obj.level
+            << " Start: " << obj.startInter
+            << " Stop:  " << obj.endInter << std::endl;
+        return out;
     }
 
 

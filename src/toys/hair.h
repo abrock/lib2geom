@@ -105,7 +105,7 @@ private:
 
     std::vector<OutlineIntersection> intersections;
 
-    std::vector<EmbroideryPatch> patches;
+    std::vector<EmbroideryArea> patches;
 
 public:
 
@@ -126,6 +126,8 @@ public:
     Hair(Path _outline, Path _curve);
 
     void run();
+
+    void run2();
 
     size_t countStitches();
 
