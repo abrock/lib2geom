@@ -251,7 +251,7 @@ TYPED_TEST(GenericRectTest, Emptiness) {
     EXPECT_FALSE(empty);
     EXPECT_TRUE(!empty);
     EXPECT_FALSE(oa.empty());
-    //EXPECT_TRUE(oa);
+    EXPECT_TRUE(oa);
     EXPECT_FALSE(!oa);
 }
 
