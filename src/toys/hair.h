@@ -286,6 +286,8 @@ public:
 
     void makeAreaLarger(Path& _curve, const double _offset);
 
+    std::vector<Point> getShortestConnection(OutlineIntersection a, OutlineIntersection b);
+
     void getCurves();
 
     void write(const char* filename);

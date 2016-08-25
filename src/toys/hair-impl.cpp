@@ -307,7 +307,7 @@ void Hair::getOutlineStitches() {
                       << __FILE__ << ", line " << __LINE__ << std::endl;
             break;
         }
-        currentIntersection.outline_stitch_height = correspondingIndex;
+        currentIntersection.outline_stitch_index = correspondingIndex;
     }
 
 }
@@ -370,10 +370,6 @@ bool Hair::isAdjacentLine(const EmbroideryLine& a, const EmbroideryLine& b) {
         return true;
     }
     return false;
-}
-
-void finishArea(EmbroideryArea& area) {
-
 }
 
 void Hair::assembleAreas() {
@@ -454,8 +450,45 @@ void Hair::assembleAreas() {
 
 
     for (EmbroideryArea& area : _areas) {
-        finishArea(area);
+        area.finish((*this));
     }
+}
+
+std::vector<Point> Hair::getShortestConnection(OutlineIntersection a, OutlineIntersection b) {
+    std::vector<Point> result_up;
+    if (a == b) {
+        return result_up;
+    }
+    std::vector<Point> result_down;
+    if (b.outline_stitch_index < a.outline_stitch_index) {
+        std::vector<Point> result = getShortestConnection(b, a);
+        std::reverse(result.begin(), result.end());
+        return result;
+    }
+    for (size_t index = a.outline_stitch_index; index < b.outline_stitch_index; ++index) {
+        OutlineStitch current = _outline_stitches[index];
+        if (!current.optional) {
+            result_up.push_back(Point(current.x(), current.y()));
+        }
+    }
+    for (size_t index = b.outline_stitch_index; index < _outline_stitches.size(); ++index) {
+        OutlineStitch current = _outline_stitches[index];
+        if (!current.optional) {
+            result_down.push_back(Point(current.x(), current.y()));
+        }
+    }
+    for (size_t index = 0; index < a.outline_stitch_index; ++index) {
+        OutlineStitch current = _outline_stitches[index];
+        if (!current.optional) {
+            result_down.push_back(Point(current.x(), current.y()));
+        }
+    }
+
+    if (result_up.size() > result_down.size()) {
+        std::reverse(result_down.begin(), result_down.end());
+        return result_down;
+    }
+    return result_up;
 }
 
 size_t Hair::countStitches() {

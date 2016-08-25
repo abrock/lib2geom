@@ -37,9 +37,13 @@ public:
     /**
      * @brief outlineStitchHeight The index of the corresponding entry in the outlineStitches vector.
      */
-    size_t outline_stitch_height;
+    size_t outline_stitch_index;
 
     EmbroideryLine* line;
+
+    Point point() {
+        return outline.pointAt(time);
+    }
 
     OutlineIntersection(Path& _outline, const PathTime _time, const size_t _height):
         outline(_outline),
