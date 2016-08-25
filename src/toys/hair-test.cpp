@@ -29,6 +29,34 @@ TEST(mod_functions, modu_direction) {
     EXPECT_EQ(-1l, h.moduloDistDirection(2,9,10));
 }
 
+TEST(path_functions, curveLength) {
+    Point a(0,0);
+    Point b(1,0);
+    Point c(0,1);
+    BezierCurve _straightLine = BezierCurveN<1>(a,b);
+    Path straightLine;
+    straightLine.append(_straightLine);
+    PathTime start, stop;
+    stop += 1;
+    EXPECT_NEAR(Hair::curveLength(straightLine, start, stop), 1.0, 1e-10);
+    stop += -.5;
+    EXPECT_NEAR(Hair::curveLength(straightLine, start, stop), 0.5, 1e-10);
+    Path curve = straightLine;
+    _straightLine = BezierCurveN<1>(b,c);
+    curve.append(_straightLine);
+    stop = start;
+    stop += 2;
+    EXPECT_NEAR(Hair::curveLength(curve, start, stop), 1.0 + M_SQRT2, 1e-10);
+    stop += -.5;
+    EXPECT_NEAR(Hair::curveLength(curve, start, stop), 1.0 + 0.5 * M_SQRT2, 1e-10);
+    start += .5;
+    EXPECT_NEAR(Hair::curveLength(curve, start, stop), 0.5 + 0.5 * M_SQRT2, 1e-10);
+    stop += .25;
+    EXPECT_NEAR(Hair::curveLength(curve, start, stop), 0.5 + 0.75 * M_SQRT2, 1e-10);
+    start += .25;
+    EXPECT_NEAR(Hair::curveLength(curve, start, stop), 0.25 + 0.75 * M_SQRT2, 1e-10);
+}
+
 int main(int argc, char** argv)
 {
     testing::InitGoogleTest(&argc, argv);

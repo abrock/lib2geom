@@ -34,6 +34,11 @@ public:
      */
     size_t height;
 
+    /**
+     * @brief outlineStitchHeight The index of the corresponding entry in the outlineStitches vector.
+     */
+    size_t outline_stitch_height;
+
     EmbroideryLine* line;
 
     OutlineIntersection(Path& _outline, const PathTime _time, const size_t _height):
@@ -41,7 +46,10 @@ public:
         time(_time),
         height(_height) {}
 
-    OutlineIntersection(Path& _outline) : outline(_outline), time(PathTime()), height(0) {}
+    OutlineIntersection(Path& _outline) : outline(_outline), time(PathTime()), height(0) {
+        time.curve_index = 0;
+        time.t = 0.0;
+    }
 
     /**
      * @brief index Index of the intersection in the ordered set of intersections with the outline.
@@ -67,6 +75,10 @@ public:
         return c1.time == c2.time;
     }
 
+    friend bool operator != (const OutlineIntersection &c1, const OutlineIntersection &c2) {
+        return !(c1.time == c2.time);
+    }
+
     friend std::ostream& operator << (std::ostream& out, const OutlineIntersection& obj) {
         out << "Time: " << obj.time << ", height: " << obj.height;
         return out;
@@ -79,7 +91,7 @@ public:
     /**
      * @brief index Number of the curves this EmbroideryLine belongs to.
      */
-    const size_t level;
+    size_t level;
 
     /**
      * @brief up The index of the closest EmbroideryLine in the next curve.
@@ -94,12 +106,12 @@ public:
     /**
      * @brief startInter PathTime of the point on the outline where this line starts.
      */
-    const OutlineIntersection& startInter;
+    OutlineIntersection startInter;
 
     /**
      * @brief endInter PathTime of the point on the outline where this line ends.
      */
-    const OutlineIntersection& endInter;
+    OutlineIntersection endInter;
 
     EmbroideryLine(
             const std::vector<Point>& stitches,
@@ -111,6 +123,7 @@ public:
         startInter(_startInter),
         endInter(_endInter) {
         insert(begin(), stitches.begin(), stitches.end());
+        //std::cout << "Constructing EmbroideryLine with start: " << startInter << ", end: " << endInter << std::endl;
     }
 
     friend std::ostream& operator << (std::ostream& out, const EmbroideryLine& obj) {

@@ -1,5 +1,9 @@
 #include "hair.h"
 
+#include "embroideryoptimization.h"
+
+
+
 /**
  * @brief writeStitches Write the stitches into a text file suitable for libembroidery-convert
  * @param filename
@@ -7,6 +11,22 @@
 void Hair::writeStitches(const char* filename) {
     std::ofstream out(filename);
     writeStitches(out);
+}
+
+void writeSVGHead(std::ostream& out) {
+    out << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?><svg" << std::endl
+        << "   xmlns:dc=\"http://purl.org/dc/elements/1.1/\""
+        << "  xmlns:cc=\"http://creativecommons.org/ns#\""
+        << "  xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\""
+        << "  xmlns:svg=\"http://www.w3.org/2000/svg\""
+        << "  xmlns=\"http://www.w3.org/2000/svg\""
+        << "  xmlns:sodipodi=\"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd\""
+        << "  xmlns:inkscape=\"http://www.inkscape.org/namespaces/inkscape\""
+        << "  width=\"400mm\""
+        << "  height=\"350mm\""
+        << "  viewBox=\"0 0 400 350\""
+        << "  id=\"svg12765\""
+        << "  version=\"1.1\">";
 }
 
 std::string Hair::outputStitch(Point p) {
@@ -51,7 +71,7 @@ double Hair::getStitchLengthes(const std::vector<Point>& stitches, std::vector<d
     return sum;
 }
 
-Hair::Hair(Path _outline, Path _curve) : outline(_outline), curve(_curve) {}
+Hair::Hair(Path _outline, Path _curve) : _outline(_outline), _curve(_curve) {}
 
 void Hair::run() {
     clock_t start = clock();
@@ -77,8 +97,15 @@ void Hair::run() {
     std::cerr << "purgeOutside took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
     std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
 
+
     start2 = clock();
-    assemblePatches();
+    getBoundaryDiscretization();
+    stop2 = clock();
+    std::cerr << "getBoundaryDiscretization took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+
+    start2 = clock();
+    assembleAreas();
     stop2 = clock();
     std::cerr << "assemblePatches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
     std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
@@ -132,7 +159,19 @@ void Hair::run2() {
     std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
 
     start2 = clock();
-    assemblePatches();
+    assignOutlineIntersections();
+    stop2 = clock();
+    std::cerr << "assignOutlineIntersections took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+
+    start2 = clock();
+    getOutlineStitches();
+    stop2 = clock();
+    std::cerr << "getOutlineStitches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+
+    start2 = clock();
+    assembleAreas();
     stop2 = clock();
     std::cerr << "assemblePatches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
     std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
@@ -141,25 +180,282 @@ void Hair::run2() {
     std::cerr << "Calculation took " << (static_cast<double>(stop-start)) / CLOCKS_PER_SEC << std::endl << std::endl;
 }
 
-void Hair::assemblePatches() {
-    std::vector<std::vector<BOOL> > visited(levels.size());
+double Hair::curveLength(const Geom::Path& curve,
+                         const Geom::PathTime start,
+                         const Geom::PathTime stop,
+                         const double dt) {
+    if (stop < start) {
+        return curveLength(curve, stop, start, dt);
+    }
+    double length = 0;
+    Geom::Point lastPoint = curve.pointAt(start);
+    Geom::PathTime currentTime = start;
+    currentTime += dt;
+    for (size_t ii = 0; ii < 100*1000*1000 && currentTime < stop; ++ii, currentTime += dt) {
+        Geom::Point currentPoint = curve.pointAt(currentTime);
+        length += (lastPoint - currentPoint).length();
+        lastPoint = currentPoint;
+    }
+    return length + (lastPoint - curve.pointAt(stop)).length();
+}
+
+void Hair::getOutlineStitches() {
+
+    //* // Variant with simple outline
+    // Conservative estimation for the step size we need:
+    // d = 1000mm: maximum distance between two points of a embroidery design
+    // h = 0.05mm: Smallest step we might want in the line length integration
+    // dt = h/d = 1.0 / 20.000: time-step
+
+    const double dt = 1.0 / (20 * 1000);
+
+    const PathTime endTime = _intersections.back().time;
+    PathTime lastTime = _intersections.back().time;
+    double currentLength = 0;
+
+    PathTime currentTime(lastTime);
+    while(currentTime < PathTime(_outline.size(), 0.0)) {
+        currentLength += (_outline.pointAt(lastTime) - _outline.pointAt(currentTime)).length();
+        if (currentLength >= _stitch_length) {
+            currentLength = 0;
+            _outline_stitches.push_back(OutlineStitch(
+                                          _outline.pointAt(currentTime),
+                                          currentTime,
+                                          false));
+        }
+        lastTime = currentTime;
+        currentTime += dt;
+    }
+
+    lastTime = PathTime();
+    currentTime = PathTime();
+    while(currentTime < PathTime(_outline.size(), 0.0)) {
+        currentLength += (_outline.pointAt(lastTime) - _outline.pointAt(currentTime)).length();
+        if (currentLength >= _stitch_length) {
+            currentLength = 0;
+            _outline_stitches.push_back(OutlineStitch(
+                                          _outline.pointAt(currentTime),
+                                          currentTime,
+                                          false));
+        }
+        lastTime = currentTime;
+        currentTime += dt;
+    }
+    // */
+
+    // Add all corners of the outline.
+    for (size_t ii = 1; ii < _outline.size(); ++ii) {
+        const Point a = -_outline[ii-1].pointAndDerivatives(.9999, 1)[1];
+        const Point b = _outline[ii].pointAndDerivatives(.0001, 1)[1];
+        const double angle = 1.0 + dot(a,b) / std::sqrt(dot(a,a) * dot(b,b));
+        if (angle > 0.05) {
+            currentTime = PathTime(ii, 0.0);
+            _outline_stitches.push_back(OutlineStitch(
+                                          _outline.pointAt(currentTime),
+                                          currentTime,
+                                          false));
+        }
+    }
+    {
+        const Point a = -_outline.back().pointAndDerivatives(.9999, 1)[1];
+        const Point b = _outline.front().pointAndDerivatives(.0001, 1)[1];
+        const double angle = 1.0 + dot(a,b) / std::sqrt(dot(a,a) * dot(b,b));
+        if (angle > 0.05) {
+            currentTime = PathTime(0, 0.0);
+            _outline_stitches.push_back(OutlineStitch(
+                                          _outline.pointAt(currentTime),
+                                          currentTime,
+                                          false));
+        }
+    }
+
+
+    /* // Variant with prettier outline, not finished.
+    for (size_t ii = 1; ii < intersections.size(); ++ii) {
+        const OutlineIntersection& a = intersections[ii-1];
+        const OutlineIntersection& b = intersections[ii];
+        if (curveLength(outline, a.time, b.time) > stitchLength) {
+
+        }
+    }
+    // */
+
+    // Insert the outlineIntersections and make them optional stitches.
+    for (const auto & p : _intersections) {
+        _outline_stitches.push_back(OutlineStitch(
+                                      _outline.pointAt(p.time),
+                                      p.time,
+                                      true));
+    }
+    std::sort(_outline_stitches.begin(), _outline_stitches.end());
+
+    // Now we need every point in the intersection vector to know
+    // its corresponding point in the outlineStitches vector.
+    size_t correspondingIndex = 0;
+    for (size_t ii = 0; ii < _intersections.size(); ++ii) {
+        OutlineIntersection& currentIntersection = _intersections[ii];
+        bool failed = false;
+        while (currentIntersection.time != _outline_stitches[correspondingIndex].time) {
+            correspondingIndex++;
+            if (correspondingIndex >= _outline_stitches.size()) {
+                failed = true;
+                break;
+            }
+        }
+        if (failed) {
+            std::cerr << "Failed to find corresponding point in outlineStitches in file "
+                      << __FILE__ << ", line " << __LINE__ << std::endl;
+            break;
+        }
+        currentIntersection.outline_stitch_height = correspondingIndex;
+    }
+
+}
+
+void Hair::writeArea(std::ofstream& out, const EmbroideryArea& area) {
+    const std::string color = getColor(0,0);
+    out << "<path style=\"display:inline;fill:none;fill-opacity:1;stroke:#"
+        << color
+        << ";stroke-width:" << _line_width << ";stroke-miterlimit:6;stroke-dasharray:none;stroke-opacity:1;enable-background:new"
+        << "\" d=\"";
+    for (const EmbroideryLine& line : area) {
+        out << write_svg_path(getPath(line)) << " ";
+    }
+    out << "\"/>" << std::endl;
+    out << "<g>";
+
+    for (const EmbroideryLine& line: area) {
+        for (const Point& p : line) {
+            writeCircle(out, p, _stitch_point_radius, color);
+        }
+    }
+
+    out << "</g>";
+}
+
+void Hair::writeAreas(const char* filename) {
+    std::ofstream out(filename);
+    writeSVGHead(out);
+
+    for (const EmbroideryArea area: _areas) {
+        writeArea(out, area);
+    }
+
+    const std::string color = getColor(0,0);
+    out << "<path style=\"display:inline;fill:none;fill-opacity:1;stroke:#"
+        << color
+        << ";stroke-width:" << _line_width << ";stroke-miterlimit:6;stroke-dasharray:none;stroke-opacity:1;enable-background:new"
+        << "\" d=\"";
+    out << write_svg_path(getPath(_outline_stitches)) << " ";
+    out << "\"/>" << std::endl;
+
+    out << "<g>";
+
+    for (const OutlineStitch & s : _outline_stitches) {
+        writeCircle(out, Point(s.x(), s.y()), _stitch_point_radius, color);
+    }
+
+    out << "</g>";
+
+    out << "</svg>";
+}
+
+bool Hair::isAdjacentLine(const EmbroideryLine& a, const EmbroideryLine& b) {
+    if (   1 == moduloDist(a.startInter.index, b.startInter.index, _intersections.size())
+           && 1 == moduloDist(a.endInter.index,   b.endInter.index,   _intersections.size())) {
+        return true;
+    }
+    if (   1 == moduloDist(a.startInter.index, b.endInter.index,   _intersections.size())
+           && 1 == moduloDist(a.endInter.index,   b.startInter.index, _intersections.size())) {
+        return true;
+    }
+    return false;
+}
+
+void finishArea(EmbroideryArea& area) {
+
+}
+
+void Hair::assembleAreas() {
+    std::vector<std::vector<BOOL> > visited(_levels.size());
+
     bool foundFirstUnvisited = false;
     size_t firstUnvisitedLevel = 0;
-    for (size_t level = 0; level < levels.size(); ++level) {
-        if (!foundFirstUnvisited && !levels[level].empty()) {
+    size_t totalLines = 0;
+    for (size_t level = 0; level < _levels.size(); ++level) {
+        std::cout << "We have " << _levels[level].size() << " lines on level " << level << ": ";
+        for (size_t ii = 0; ii < _levels[level].size(); ++ii) {
+            totalLines++;
+            std::cout << _levels[level][ii].size() << ", ";
+        }
+        if (!foundFirstUnvisited && !_levels[level].empty()) {
             foundFirstUnvisited = true;
             firstUnvisitedLevel = level;
         }
-        std::cout << "We have " << levels[level].size() << " lines on level " << level << ": ";
-        for (size_t ii = 0; ii < levels[level].size(); ++ii) {
-            std::cout << levels[level][ii].size() << ", ";
-        }
         std::cout << std::endl;
-        visited[level] = std::vector<BOOL>(levels[level].size(), false);
+        visited[level] = std::vector<BOOL>(_levels[level].size(), false);
     }
-    EmbroideryLine& firstUnvisited = levels[firstUnvisitedLevel][0];
+    EmbroideryLine& firstUnvisited = _levels[firstUnvisitedLevel][0];
+    while (true) {
+        bool foundUnvisited = false;
+
+        for (size_t level = 0; level < _levels.size(); ++level) {
+            for (size_t lineIndex = 0; lineIndex < _levels[level].size(); ++lineIndex) {
+                if (!visited[level][lineIndex]) {
+                    foundUnvisited = true;
+                    firstUnvisited = _levels[level][lineIndex];
+                    firstUnvisitedLevel = level;
+                    visited[level][lineIndex] = true;
+                    break;
+                }
+            }
+            if (foundUnvisited) {
+                break;
+            }
+        }
+        if (!foundUnvisited) {
+            break;
+        }
+
+        EmbroideryArea currentArea(firstUnvisited, firstUnvisitedLevel);
+        EmbroideryLine& lastLine = firstUnvisited;
+        for (size_t level = firstUnvisitedLevel + 1; level < _levels.size(); ++level) {
+            bool foundAdjacent = false;
+            for (size_t lineIndex = 0; lineIndex < _levels[level].size(); ++lineIndex) {
+                if (!visited[level][lineIndex] && isAdjacentLine(lastLine, _levels[level][lineIndex])) {
+                    lastLine = _levels[level][lineIndex];
+                    currentArea.push_back(_levels[level][lineIndex]);
+                    foundAdjacent = true;
+                    visited[level][lineIndex] = true;
+                    break;
+                }
+            }
+            if (!foundAdjacent) {
+                //std::cout << "no more adjacent lines at level " << level << std::endl;
+                break;
+            }
+        }
+        _areas.push_back(currentArea);
+    }
+
+    size_t visitedLines = 0;
+    std::cout << "got " << _areas.size() << "areas with sizes:" << std::endl;
+    for (const EmbroideryArea & area : _areas) {
+        std::cout << area.size() << ", ";
+        visitedLines += area.size();
+    }
+    std::cout << std::endl;
+    std::cout << "min_levels: ";
+    for (const EmbroideryArea & area : _areas) {
+        std::cout << area.min_level << ", ";
+    }
+    std::cout << std::endl;
+    std::cout << "visited " << visitedLines << " lines out of " << totalLines << std::endl;
 
 
+    for (EmbroideryArea& area : _areas) {
+        finishArea(area);
+    }
 }
 
 size_t Hair::countStitches() {
@@ -282,11 +578,11 @@ void Hair::getBoundaryDiscretization() {
 void Hair::getBoundaryDiscretization() {
     std::cerr << "########### getBoundaryDiscretization ###########" << std::endl;
     std::vector<Point> tmp;
-    for (auto it = outline.begin(); it != outline.end(); ++it) {
+    for (auto it = _outline.begin(); it != _outline.end(); ++it) {
         Path curve;
         curve.append(*it);
         std::vector<Point> tmpStitches;
-        getStitches(tmpStitches, curve, discreteOutlineParam);
+        getStitches(tmpStitches, curve, _discrete_outline_param);
         if (tmp.empty()) {
             tmp = tmpStitches;
         }
@@ -308,7 +604,7 @@ void Hair::getBoundaryDiscretization() {
     std::cerr << "Outline size after subdividing: " << tmp.size() << std::endl;
     lengthStats(tmp);
 
-    discreteOutline = tmp;
+    _discrete_outline = tmp;
 }
 
 void Hair::lengthStats(const std::vector<Point>& points) {
@@ -435,7 +731,7 @@ void Hair::assembleStitches() {
 
     stitches.clear();
     stitches.push_back(bestStitches);
-    bridges = bestBridges;
+    _bridges = bestBridges;
 }
 
 
@@ -451,7 +747,7 @@ std::vector<Point> Hair::assembleStitches(const std::vector<std::vector<Point> >
     if (reverseInitial) {
         std::reverse(patch.begin(), patch.end());
     }
-    const size_t discreteSize = discreteOutline.size();
+    const size_t discreteSize = _discrete_outline.size();
 
     std::vector<std::vector<Point> > patches;
     std::vector<Point> smallPatch;
@@ -478,9 +774,9 @@ std::vector<Point> Hair::assembleStitches(const std::vector<std::vector<Point> >
             // Now we need to find a path along the outline from the lastPoint to the current line.
             // First we find out if the start or the end of the line are within smaller range.
 
-            const size_t lastPointOutline = bestMatch(discreteOutline, lastPoint);
-            const size_t frontOption = bestMatch(discreteOutline, linePoints.front());
-            const size_t backOption = bestMatch(discreteOutline, linePoints.back());
+            const size_t lastPointOutline = bestMatch(_discrete_outline, lastPoint);
+            const size_t frontOption = bestMatch(_discrete_outline, linePoints.front());
+            const size_t backOption = bestMatch(_discrete_outline, linePoints.back());
             size_t option = frontOption;
             if (moduloDist(lastPointOutline, frontOption, discreteSize)
                     > moduloDist(lastPointOutline, backOption, discreteSize)) {
@@ -500,20 +796,20 @@ std::vector<Point> Hair::assembleStitches(const std::vector<std::vector<Point> >
                 if (ii >= static_cast<int>(discreteSize)) {
                     ii = 0;
                 }
-                bridge.push_back(discreteOutline[static_cast<size_t>(ii)]);
+                bridge.push_back(_discrete_outline[static_cast<size_t>(ii)]);
                 if (bridge.size() > maxBridgeSize) {
                     std::cerr << "Bridge has grown too large, maximum size is " << maxBridgeSize << ", lasPointOutline is " << lastPointOutline << ", option is " << option << ", direction is " << direction << std::endl;
                     break;
                 }
             }
-            bridge.push_back(discreteOutline[option]);
+            bridge.push_back(_discrete_outline[option]);
             // We remove unnecessary stitches from the bridge.
             const Point& nextLineStart = reverseCurrentLine ? linePoints.back() : linePoints.front();
             if (bridge.size() > 1) {
                 const Point& lastBridge = bridge.back();
                 const Point& lastlastBridge = bridge[bridge.size()-2];
                 if (dot(lastlastBridge - lastBridge, nextLineStart - lastBridge) > 0
-                        && (lastlastBridge - nextLineStart).length() < stitchLength/2) {
+                        && (lastlastBridge - nextLineStart).length() < _stitch_length/2) {
                     bridge.pop_back();
                 }
             }
@@ -521,14 +817,14 @@ std::vector<Point> Hair::assembleStitches(const std::vector<std::vector<Point> >
                 const Point& firstBridge = bridge.front();
                 const Point& secondBridge = bridge[1];
                 if (dot(secondBridge - firstBridge, lastPoint - firstBridge) > 0
-                        && (secondBridge - lastPoint).length() < stitchLength/2) {
+                        && (secondBridge - lastPoint).length() < _stitch_length/2) {
                     bridge.erase(bridge.begin());
                 }
             }
             if (bridge.size() == 1) {
                 const Point& bridgeElement = bridge.front();
                 if (dot(lastPoint - bridgeElement, nextLineStart - bridgeElement) > 0
-                        || (lastPoint - nextLineStart).length() < stitchLength/3) {
+                        || (lastPoint - nextLineStart).length() < _stitch_length/3) {
                     bridge.clear();
                 }
             }
@@ -587,8 +883,8 @@ int Hair::getNextLine(const int lastLine, const Point& p, const std::vector<BOOL
         return 0;
     }
     if (lastLine + 1 < lines.size()) {
-        if (stitchLength >= (p - lines[lastLine+1].front()).length()
-                || stitchLength >=(p - lines[lastLine+1].back()).length()) {
+        if (_stitch_length >= (p - lines[lastLine+1].front()).length()
+                || _stitch_length >=(p - lines[lastLine+1].back()).length()) {
             if (!visited[lastLine+1]) {
                 return lastLine+1;
             }
@@ -620,11 +916,11 @@ int Hair::getNextLine(const int lastLine, const Point& p, const std::vector<BOOL
 void Hair::purgeOutside() {
     RunningStats stitchLength;
     std::vector<std::vector<Point> > newStitches;
-    levels = std::vector<EmbroideryLineLevel>(stitches.size());
-#pragma omp parallel for
+    _levels = std::vector<EmbroideryLineLevel>(stitches.size());
+    //#pragma omp parallel for
     for (size_t level = 0; level < stitches.size(); ++level) {
         const std::vector<Point>& line = stitches[level];
-        levels[level].reserve(line.size());
+        _levels[level].reserve(line.size());
         if (line.size() < 2) {
             continue;
         }
@@ -634,9 +930,15 @@ void Hair::purgeOutside() {
             inside[ii] = isInsidePoint(line[ii]);
         }
         if (inside[0]) {
+            std::cerr << "First point must not be inside the area in file "
+                      << __FILE__ << ", line " << __LINE__ << std::endl
+                      << ", level " << level << ", point " << line[0] << std::endl;
+            return;
             newLine.push_back(line[0]);
         }
-        OutlineIntersection startInter(outline), endInter(outline);
+        OutlineIntersection startInter(_outline), endInter(_outline);
+        startInter.height = level;
+        endInter.height = level;
         for (size_t ii = 0; ii + 1 < line.size(); ++ii) {
             if (inside[ii] && inside[ii+1]) {
                 newLine.push_back(line[ii+1]);
@@ -646,34 +948,41 @@ void Hair::purgeOutside() {
             BezierCurve _straightLine = BezierCurveN<1>(line[ii], line[ii+1]);
             Path straightLine;
             straightLine.append(_straightLine);
-            std::vector<PathIntersection> intersection = straightLine.intersect(outline);
+            std::vector<PathIntersection> intersection = straightLine.intersect(_outline);
             if (inside[ii] && !inside[ii+1]) {
                 //straightLine.stitchTo(line[ii+1]);
                 //std::cerr << "straightLine: " << write_svg_path(straightLine) << std::endl;
                 Point intersectPoint = straightLine.pointAt(intersection[0].first);
+                endInter.time = intersection[0].second;
                 newLine.push_back(intersectPoint);
-                if (lineLength(newLine) > minStitchLength) {
+                if (lineLength(newLine) > _min_stitch_length) {
 #pragma omp critical
                     {
                         newStitches.push_back(newLine);
-                        levels[level].push_back(EmbroideryLine(newLine, level, startInter, endInter));
-                        startInter.line = &levels[level].back();
-                        endInter.line = &levels[level].back();
-                        intersections.push_back(startInter);
-                        intersections.push_back(endInter);
+                        _levels[level].push_back(EmbroideryLine(newLine, level, startInter, endInter));
+                        startInter.line = &_levels[level].back();
+                        endInter.line = &_levels[level].back();
+                        _intersections.push_back(startInter);
+                        _intersections.push_back(endInter);
                     }
                 }
                 newLine.clear();
+                continue;
             }
             if (!inside[ii] && inside[ii+1]) {
                 Path straightLine;
                 straightLine.append(_straightLine);
                 //straightLine.stitchTo(line[ii+1]);
                 //std::cerr << "straightLine: " << write_svg_path(straightLine) << std::endl;
+                if (intersection.empty()) {
+                    std::cout << "Intersection was unexpectedly empty in file "
+                              << __FILE__ << ", line " << __LINE__ << std::endl;
+                }
                 Point intersectPoint = straightLine.pointAt(intersection[0].first);
                 newLine.push_back(intersectPoint);
                 newLine.push_back(line[ii+1]);
-                startInter = OutlineIntersection(outline, intersection[0].second, level);
+                startInter.time = intersection[0].second;
+                continue;
             }
             if (!inside[ii] && !inside[ii+1]) {
                 if (2 <= intersection.size()) {
@@ -681,55 +990,29 @@ void Hair::purgeOutside() {
                     const Point endPoint = straightLine.pointAt(intersection[1].first);
                     newLine.push_back(startPoint);
                     newLine.push_back(endPoint);
-                    startInter = OutlineIntersection(outline, intersection[0].second, level);
-                    endInter = OutlineIntersection(outline, intersection[1].second, level);
-                    if (lineLength(newLine) > minStitchLength) {
+                    startInter.time = intersection[0].second;
+                    endInter.time = intersection[1].second;
+                    if (lineLength(newLine) > _min_stitch_length) {
 #pragma omp critical
                         {
                             newStitches.push_back(newLine);
-                            levels[level].push_back(EmbroideryLine(newLine, level, startInter, endInter));
-                            startInter.line = &levels[level].back();
-                            endInter.line = &levels[level].back();
-                            intersections.push_back(startInter);
-                            intersections.push_back(endInter);
+                            _levels[level].push_back(EmbroideryLine(newLine, level, startInter, endInter));
+                            startInter.line = &_levels[level].back();
+                            endInter.line = &_levels[level].back();
+                            _intersections.push_back(startInter);
+                            _intersections.push_back(endInter);
                         }
                     }
                     newLine.clear();
                 }
+                continue;
             }
         }
     }
     stitches = newStitches;
-    std::cout << "Number of intersections: " << intersections.size() << std::endl;
-    std::sort(intersections.begin(), intersections.end());
-    for (EmbroideryLineLevel & level : levels) {
-        for (EmbroideryLine & line : level) {
-            auto it = std::find(intersections.begin(), intersections.end(), line.startInter);
-            if (intersections.end() == it) {
-                std::cerr << "Couldn't find the intersection in the intersections vector in file "
-                          << __FILE__ << ", line " << __LINE__ << std::endl
-                          << line << std::endl;
-            }
-            else {
-                it->index = it - intersections.begin();
-                line.endInter.index = it->index;
-            }
+    // std::cout << "Number of intersections: " << intersections.size() << std::endl;
 
-            it = std::find(intersections.begin(), intersections.end(), line.endInter);
-            if (intersections.end() == it) {
-                std::cerr << "Couldn't find the intersection in the intersections vector in file "
-                          << __FILE__ << ", line " << __LINE__ << std::endl
-                          << line << std::endl;
-            }
-            else {
-                it->index = it - intersections.begin();
-            }
 
-        }
-    }
-    std::cerr << "Stitch lengh stats: " << stitchLength.print() << std::endl;
-
-    getBoundaryDiscretization();
 }
 
 double Hair::lineLength(const std::vector<Point>& points) {
@@ -743,26 +1026,26 @@ double Hair::lineLength(const std::vector<Point>& points) {
 
 void Hair::getStitches() {
 
-    const size_t initialIndex = curves.size()/2;
-    Path initialCurve = curves[initialIndex];
+    const size_t initialIndex = _curves.size()/2;
+    Path initialCurve = _curves[initialIndex];
 
-    stitches.assign(curves.size(), std::vector<Point>());
+    stitches.assign(_curves.size(), std::vector<Point>());
     getStitches(stitches[initialIndex], initialCurve);
 
     //enlargeCurves();
 
-    initialStitchLengthsSum = getStitchLengthes(stitches[initialIndex], initialStichLengths);
+    _initial_stitch_lengths_sum = getStitchLengthes(stitches[initialIndex], _initial_stitch_lengths);
 
-    for (size_t ii = initialIndex+1; ii < curves.size(); ++ii) {
-        auto tmp = projection(stitches[ii-1], curves[ii]);
-        if (!atLeastOneInside(tmp, outline)) {
+    for (size_t ii = initialIndex+1; ii < _curves.size(); ++ii) {
+        auto tmp = projection(stitches[ii-1], _curves[ii]);
+        if (!atLeastOneInside(tmp, _outline)) {
             break;
         }
         stitches[ii] = tmp;
     }
     for (size_t ii = initialIndex; ii+1 > 0; --ii) {
-        auto tmp = projection(stitches[ii+1], curves[ii]);
-        if (!atLeastOneInside(tmp, outline)) {
+        auto tmp = projection(stitches[ii+1], _curves[ii]);
+        if (!atLeastOneInside(tmp, _outline)) {
             break;
         }
         stitches[ii] = tmp;
@@ -771,15 +1054,74 @@ void Hair::getStitches() {
     //            stitches[ii] = vectorOffset(stitches[ii], offset);
     //        }
     double currentOffset = 0;
-    for (size_t ii = 0; ii < curves.size(); ++ii) {
-        stitches[ii] = vectorOffsetOnCurve(stitches[ii], curves[ii], currentOffset);
-        currentOffset = fmod(currentOffset + offset, 1.0);
+    for (size_t ii = 0; ii < _curves.size(); ++ii) {
+        stitches[ii] = vectorOffsetOnCurve(stitches[ii], _curves[ii], currentOffset);
+        currentOffset = fmod(currentOffset + _offset, 1.0);
     }
 
 }
 
+void Hair::assignOutlineIntersections() {
+    std::sort(_intersections.begin(), _intersections.end());
+    bool failed = false;
+    for (EmbroideryLineLevel & level : _levels) {
+        for (EmbroideryLine & line : level) {
+            auto it = std::find(_intersections.begin(), _intersections.end(), line.startInter);
+            if (_intersections.end() == it) {
+                std::cerr << "Couldn't find the intersection in the intersections vector in file "
+                          << __FILE__ << ", line " << __LINE__ << std::endl
+                          << line << std::endl;
+                failed = true;
+            }
+            else {
+                it->index = it - _intersections.begin();
+                line.startInter.index = it->index;
+                it->line = &line;
+            }
+
+            it = std::find(_intersections.begin(), _intersections.end(), line.endInter);
+            if (_intersections.end() == it) {
+                std::cerr << "Couldn't find the intersection in the intersections vector in file "
+                          << __FILE__ << ", line " << __LINE__ << std::endl
+                          << line << std::endl;
+                failed = true;
+            }
+            else {
+                it->index = it - _intersections.begin();
+                line.endInter.index = it->index;
+                it->line = &line;
+            }
+        }
+    }
+    for (const EmbroideryLineLevel & level : _levels) {
+        for (const EmbroideryLine & line : level) {
+            if (line.startInter != _intersections[line.startInter.index]) {
+                std::cerr << "Outline intersection assignment incorrect in file "
+                          << __FILE__ << ", line " << __LINE__ << std::endl;
+                failed = true;
+            }
+        }
+    }
+    for (const OutlineIntersection & inter : _intersections) {
+        if (inter != inter.line->endInter && inter != inter.line->startInter) {
+            failed = true;
+            std::cout << "Outline intersection assignment incorrent in file "
+                      << __FILE__ << ", line " << __LINE__ << std::endl;
+            std::cout << "inter: " << inter << std::endl
+                      << "startInter: " << inter.line->startInter << std::endl
+                      << "endInter: " << inter.line->endInter << std::endl;
+        }
+    }
+    if (failed) {
+        std::cout << "Failed assigning outline intersections" << std::endl;
+    }
+    else {
+        std::cout << "Succeeded in assigning outline intersection" << std::endl;
+    }
+}
+
 void Hair::enlargeCurves() {
-    for (auto &curve : curves) {
+    for (auto &curve : _curves) {
         enlargeCurve(curve);
     }
 }
@@ -862,7 +1204,7 @@ std::vector<Point> Hair::vectorOffsetOnCurve(
 }
 
 bool Hair::isInsidePoint(const Point p) {
-    return 0 != outline.winding(p);
+    return 0 != _outline.winding(p);
 }
 
 std::vector<Point> Hair::projection(const std::vector<Point> & src, Path& curve) {
@@ -883,7 +1225,7 @@ std::vector<Point> Hair::projection(const std::vector<Point> & src, Path& curve)
 
 template<class Points>
 void Hair::getStitches(Points& initialCurvePoints, const Path& initialCurve) {
-    getStitches(initialCurvePoints, initialCurve, stitchLength);
+    getStitches(initialCurvePoints, initialCurve, _stitch_length);
 }
 
 template<class Points>
@@ -953,46 +1295,46 @@ Point Hair::getOffsettedPointOnCurve(const Path& curve, PathTime& t, const doubl
 }
 
 void Hair::makeAreaLarger(Path& curve, const double offset) {
-    curve = Inkscape::half_outline(curve, offset, miter);
+    curve = Inkscape::half_outline(curve, offset, _miter);
 }
 
 void Hair::getCurves() {
 
     PathVector rights, lefts;
 
-    Path left = curve;
-    Path right = curve.reversed();
-//#pragma omp parallel sections
+    Path left = _curve;
+    Path right = _curve.reversed();
+    //#pragma omp parallel sections
     // These sections seem independent but somehow they are not
     // and the program crashes with a segfault some times when run in parallel
     {
-//#pragma omp section
+        //#pragma omp section
         {
-            for (size_t ii = 0; ii < maxIter; ++ii) {
-                left = Inkscape::half_outline(left, lineSpacing, miter);
-                if (left.intersect(outline).empty()) {
+            for (size_t ii = 0; ii < _max_iter; ++ii) {
+                left = Inkscape::half_outline(left, _line_spacing, _miter);
+                if (left.intersect(_outline).empty()) {
                     break;
                 }
                 lefts.push_back(left);
             }
         }
-//#pragma omp section
+        //#pragma omp section
         {
-            for (size_t ii = 0; ii < maxIter; ++ii) {
-                right = Inkscape::half_outline(right, lineSpacing, miter);
-                if (right.intersect(outline).empty()) {
+            for (size_t ii = 0; ii < _max_iter; ++ii) {
+                right = Inkscape::half_outline(right, _line_spacing, _miter);
+                if (right.intersect(_outline).empty()) {
                     break;
                 }
                 rights.push_back(right);
             }
             rights.reverse(true);
-            curves.insert(curves.begin(), rights.begin(), rights.end());
-            curves.push_back(curve);
+            _curves.insert(_curves.begin(), rights.begin(), rights.end());
+            _curves.push_back(_curve);
         }
     }
 
-    curves.insert(curves.end(), lefts.begin(), lefts.end());
-    std::cerr << "We now have " << curves.size() << " curves" << std::endl;
+    _curves.insert(_curves.end(), lefts.begin(), lefts.end());
+    std::cerr << "We now have " << _curves.size() << " curves" << std::endl;
 }
 
 void Hair::write(const char* filename) {
@@ -1000,31 +1342,17 @@ void Hair::write(const char* filename) {
     write(out);
 }
 
-void writeSVGHead(std::ostream& out) {
-    out << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?><svg" << std::endl
-        << "   xmlns:dc=\"http://purl.org/dc/elements/1.1/\""
-        << "  xmlns:cc=\"http://creativecommons.org/ns#\""
-        << "  xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\""
-        << "  xmlns:svg=\"http://www.w3.org/2000/svg\""
-        << "  xmlns=\"http://www.w3.org/2000/svg\""
-        << "  xmlns:sodipodi=\"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd\""
-        << "  xmlns:inkscape=\"http://www.inkscape.org/namespaces/inkscape\""
-        << "  width=\"400mm\""
-        << "  height=\"350mm\""
-        << "  viewBox=\"0 0 400 350\""
-        << "  id=\"svg12765\""
-        << "  version=\"1.1\">";
-}
+
 
 void Hair::write(std::ostream& out) {
     writeSVGHead(out);
     out << "<g>";
-    for (auto c : curves) {
+    for (auto c : _curves) {
         write(out, c, "aaaaaa");
     }
     out << "</g>";
-    write(out, curve, "ff0000");
-    write(out, outline, "0000ff");
+    write(out, _curve, "ff0000");
+    write(out, _outline, "0000ff");
 
     //writeStitchPoints(out, "00ff00");
     out << "<g>";
@@ -1032,15 +1360,15 @@ void Hair::write(std::ostream& out) {
     out << "</g>";
 
     out << "<g>";
-    write(out, getPath(discreteOutline), "ff0000");
-    writeCircles(out, discreteOutline, stitchPointRadius, "ff0000");
+    write(out, getPath(_discrete_outline), "ff0000");
+    writeCircles(out, _discrete_outline, _stitch_point_radius, "ff0000");
     out << "</g>";
 
     out << "<g>";
-    writePatches(out, bridges);
+    writePatches(out, _bridges);
     out << "</g>";
     out << "<g>";
-    writeOutlineIntersections(out, intersections);
+    writeOutlineIntersections(out, _intersections);
     out << "</g>";
     out << "</svg>" << std::endl;
 }
@@ -1059,14 +1387,14 @@ void Hair::writeOutlineIntersections(std::ostream& out, std::vector<OutlineInter
 void Hair::write(std::ostream& out, Path path, std::string color) {
     out << "<path style=\"display:inline;fill:none;fill-opacity:1;stroke:#"
         << color
-        << ";stroke-width:" << lineWidth << ";stroke-miterlimit:6;stroke-dasharray:none;stroke-opacity:1;enable-background:new"
+        << ";stroke-width:" << _line_width << ";stroke-miterlimit:6;stroke-dasharray:none;stroke-opacity:1;enable-background:new"
         << "\" d=\"" << write_svg_path(path) << "\"/>" << std::endl;
 }
 
 void Hair::writeStitchPoints(std::ostream& out, std::string color) {
     for (auto s : stitches) {
         for (auto p : s) {
-            writeCircle(out, p, stitchPointRadius, color);
+            writeCircle(out, p, _stitch_point_radius, color);
         }
     }
 }
@@ -1114,11 +1442,12 @@ void Hair::writePatches(std::ostream& out, std::vector<Line>& patches) {
         }
         std::string color = getColor(ii, patches.size());
         write(out, getPath(patch), color);
-        writeCircles(out, patch, stitchPointRadius, color);
+        writeCircles(out, patch, _stitch_point_radius, color);
     }
 }
 
-Path Hair::getPath(std::vector<Point>& points) {
+template<class C>
+Path Hair::getPath(const std::vector<C>& points) {
     Path result;
     if (points.size() < 2) {
         return result;

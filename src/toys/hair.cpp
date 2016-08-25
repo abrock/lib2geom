@@ -44,5 +44,7 @@ int main(int argc, char **argv) {
     hair.write("tail-1-results.svg");
     hair.writeStitches("tail-1-results.txt");
 
+    hair.writeAreas("tail-1-areas.svg");
+
     return 0;
 }
