@@ -46,5 +46,9 @@ int main(int argc, char **argv) {
 
     hair.writeAreas("tail-1-areas.svg");
 
+    hair.writeForwardAreas("tail-1-forward-areas.svg");
+    hair.writeReverseAreas("tail-1-reverse-areas.svg");
+
+
     return 0;
 }

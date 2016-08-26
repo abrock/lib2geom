@@ -17,13 +17,8 @@ using namespace Geom;
 
 class EmbroideryLine;
 
-class OutlineIntersection {
+class OutlineIntersection : public Point {
 public:
-    /**
-     * @brief outline Reference to the outline Path
-     */
-    Path& outline;
-
     /**
      * @brief time The Pathtime of the intersection wrt. the outline path.
      */
@@ -32,43 +27,42 @@ public:
     /**
      * @brief height The height of the intersection, i.e. the index of the original curve
      */
-    size_t height;
+    size_t height = -1;
 
     /**
      * @brief outlineStitchHeight The index of the corresponding entry in the outlineStitches vector.
      */
-    size_t outline_stitch_index;
-
-    EmbroideryLine* line;
-
-    Point point() {
-        return outline.pointAt(time);
-    }
-
-    OutlineIntersection(Path& _outline, const PathTime _time, const size_t _height):
-        outline(_outline),
-        time(_time),
-        height(_height) {}
-
-    OutlineIntersection(Path& _outline) : outline(_outline), time(PathTime()), height(0) {
-        time.curve_index = 0;
-        time.t = 0.0;
-    }
+    size_t outline_stitch_index = -1;
 
     /**
      * @brief index Index of the intersection in the ordered set of intersections with the outline.
      * This allows to check if two intersections are next to each other
      */
-    mutable size_t index = 0;
+    size_t index = 0;
 
-    OutlineIntersection& operator=(OutlineIntersection b) {
-        index = b.index;
-        height = b.height;
-        time = b.time;
-        if (outline != b.outline) {
-            //throw std::logic_error(std::string("Invalid attempt to assign OutlineIntersection with different outline member to self\nfile: ") + __FILE__ + "\nline: " + std::to_string(__LINE__) + "\n");
-        }
-        return *this;
+    bool optional = true;
+
+    EmbroideryLine* line;
+
+    OutlineIntersection(
+            const Point p = Point()
+            , const PathTime _time = PathTime()
+            , const size_t _height = -1
+            , const size_t _outline_stitch_index = -1
+            , const bool _optional = true)
+        : Point(p)
+        , time(_time)
+        , height(_height)
+        , outline_stitch_index(_outline_stitch_index)
+        , optional(_optional) {}
+
+    void setPoint(Point p) {
+        x() = p.x();
+        y() = p.y();
+    }
+
+    void setPoint(Path path, PathTime time) {
+        setPoint(path.pointAt(time));
     }
 
     friend bool operator< (const OutlineIntersection &c1, const OutlineIntersection &c2) {

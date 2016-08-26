@@ -1,9 +1,12 @@
 #pragma once
+#ifndef HAIR_H
+#define HAIR_H
 
 #include <2geom/d2.h>
 #include <2geom/intersection-graph.h>
 #include <2geom/path.h>
 #include <2geom/sbasis.h>
+
 #include <2geom/svg-path-parser.h>
 #include <2geom/transforms.h>
 #include <2geom/sbasis-to-bezier.h>
@@ -36,6 +39,8 @@
 
 using namespace Geom;
 
+
+/*
 class OutlineStitch : public Geom::Point {
 public:
     PathTime time;
@@ -59,6 +64,7 @@ public:
         return !(c1.time == c2.time);
     }
 };
+*/
 
 class Hair {
     typedef char BOOL;
@@ -130,7 +136,7 @@ private:
 
     std::vector<OutlineIntersection> _intersections;
 
-    std::vector<OutlineStitch> _outline_stitches;
+    std::vector<OutlineIntersection> _outline_stitches;
 
     std::vector<EmbroideryArea> _areas;
 
@@ -197,6 +203,8 @@ public:
     void assembleStitches();
 
     void assembleAreas();
+
+    void getOutlineIntermediateStitches();
 
     void assignOutlineIntersections();
 
@@ -286,7 +294,7 @@ public:
 
     void makeAreaLarger(Path& _curve, const double _offset);
 
-    std::vector<Point> getShortestConnection(OutlineIntersection a, OutlineIntersection b);
+    std::vector<Point> getShortestConnection(OutlineIntersection a, OutlineIntersection b) const;
 
     void getCurves();
 
@@ -299,6 +307,9 @@ public:
     void writeStitchPoints(std::ostream& out, std::string color);
 
     void writeAreas(const char* filename);
+
+    void writeForwardAreas(const char* filename);
+    void writeReverseAreas(const char* filename);
 
     void writeArea(std::ofstream& out, const EmbroideryArea& area);
 
@@ -316,10 +327,12 @@ public:
 
     void writeCircles(
             std::ostream& out,
-            std::vector<Point> & centers,
+            const std::vector<Point> & centers,
             double radius,
             std::string color);
 
     void writeCircle(std::ostream& out, Point center, double radius, std::string color);
 
 };
+
+#endif // HAIR_H

@@ -192,6 +192,8 @@ ENDIF(2GEOM_TOYS)
 add_library(hair_impl hair-impl.cpp)
 add_library(memoryConsumption memoryconsumption.cpp)
 add_library(geom-pathstroke geom-pathstroke.cpp)
+add_library(embroideryarea embroideryarea.cpp)
+target_link_libraries(hair_impl embroideryarea)
 
 target_link_libraries(hair_impl 2geom)
 

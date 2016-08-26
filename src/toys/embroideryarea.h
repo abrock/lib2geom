@@ -41,21 +41,7 @@ public:
     /**
      * @brief finish Create the stitch lists for forward and reverse
      */
-    void finish(const Hair& helper) {
-        addPoints(forward_stitches, (*this)[0].begin(), (*this)[0].end());
-        addPoints(reverse_stitches, (*this)[0].rbegin(), (*this)[0].rend());
-
-        for (size_t ii = 1; ii < size(); ++ii) {
-            Point current_forward_stop = stop.point();
-            Point current_forward_last = forward_stitches.back();
-            Point current_reverse_stop = r_stop.point();
-            Point current_reverse_last = reverse_stitches.back();
-            const double forward_error = (current_forward_stop - current_forward_last).length();
-            const double reverse_error = (current_reverse_stop - current_reverse_last).length();
-            assert(forward_error < 1e-4);
-            assert(reverse_error < 1e-4);
-        }
-    }
+    void finish(const Hair& helper);
 };
 
 #endif // EMBROIDERYPATCH_H
