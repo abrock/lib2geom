@@ -65,13 +65,19 @@ void Hair::writeStitches(const std::vector<Point>& stitches, std::ostream& out) 
     if (stitches.empty()) {
         return;
     }
+    const Point offset = getCenter(stitches);
 
-    out << "0.0,0.0 color:0 flags:1" << std::endl;
-    out << outputStitch(stitches.front()) << " color:0 flags:1" << std::endl;
-    for (const Point stitch : stitches) {
-        out << outputStitch(stitch) << " color:0 flags:0" << std::endl;
+    out << "0.0,0.0 color:0 flags:1" << std::endl
+        << "0.0,0.0 color:0 flags:1" << std::endl
+        << "0.0,0.0 color:0 flags:1" << std::endl
+        << "0.0,0.0 color:0 flags:1" << std::endl;
+
+    out << outputStitch(stitches.front() - offset) << " color:0 flags:1" << std::endl;
+    out << outputStitch(stitches.front() - offset) << " color:0 flags:1" << std::endl;
+    for (const Point& stitch : stitches) {
+        out << outputStitch(stitch - offset) << " color:0 flags:0" << std::endl;
     }
-    out << outputStitch(stitches.back()) << " color:0 flags:16";
+    out << outputStitch(stitches.back() - offset) << " color:0 flags:16";
 }
 
 void Hair::writeStitches(const std::vector<Point>& stitches, const char* filename) {
@@ -80,7 +86,7 @@ void Hair::writeStitches(const std::vector<Point>& stitches, const char* filenam
 }
 
 void Hair::writeStitches(const std::vector<Point>& stitches, const std::string filename) {
-    writeStitches(filename.c_str());
+    writeStitches(stitches, filename.c_str());
 }
 
 double Hair::getStitchLengthes(const std::vector<Point>& stitches, std::vector<double>& lengths) {
@@ -1652,6 +1658,29 @@ Path Hair::getPath(const std::vector<C>& points) {
         result.append(straightLine);
     }
     return result;
+}
+
+Point Hair::getCenter(const std::vector<Point>& stitches) {
+    if (stitches.empty()) {
+        return Point(0,0);
+    }
+    Point max = stitches.front();
+    Point min = max;
+    for (const auto p : stitches) {
+        if (p.x() < min.x()) {
+            min.x() = p.x();
+        }
+        if (p.y() < min.y()) {
+            min.y() = p.y();
+        }
+        if (p.x() > max.x()) {
+            max.x() = p.x();
+        }
+        if (p.y() > max.y()) {
+            max.y() = p.y();
+        }
+    }
+    return (min+max)/2;
 }
 
 void Hair::writeCircles(std::ostream& out, const std::vector<Point> & centers, double radius, std::string color) {

@@ -144,6 +144,8 @@ private:
 public:
     std::vector<Point> greedySolution;
 
+    static Point getCenter(const std::vector<Point>& stitches);
+
     void assembleGreedySolution();
 
     void getOutlineStitches();
