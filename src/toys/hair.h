@@ -140,7 +140,11 @@ private:
 
     std::vector<EmbroideryArea> _areas;
 
+
 public:
+    std::vector<Point> greedySolution;
+
+    void assembleGreedySolution();
 
     void getOutlineStitches();
 
@@ -157,9 +161,17 @@ public:
      */
     void writeStitches(const char* filename);
 
+    /**
+     * @brief writeStitches Write the stitches into a text file suitable for libembroidery-convert
+     * @param filename
+     */
+    void writeStitches(const std::vector<Point>& stitches, const char* filename);
+
     std::string outputStitch(Point p);
 
     void writeStitches(std::ostream& out);
+
+    void writeStitches(const std::vector<Point>& stitches, std::ostream& out);
 
     double getStitchLengthes(const std::vector<Point>& stitches, std::vector<double>& lengths);
 
@@ -330,6 +342,8 @@ public:
             const std::vector<Point> & centers,
             double radius,
             std::string color);
+
+
 
     void writeCircle(std::ostream& out, Point center, double radius, std::string color);
 
