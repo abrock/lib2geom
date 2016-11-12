@@ -13,6 +13,10 @@ void Hair::writeStitches(const char* filename) {
     writeStitches(out);
 }
 
+void Hair::writeStitches(const std::string filename) {
+    writeStitches(filename.c_str());
+}
+
 void writeSVGHead(std::ostream& out) {
     out << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?><svg" << std::endl
         << "   xmlns:dc=\"http://purl.org/dc/elements/1.1/\""
@@ -1132,7 +1136,7 @@ void Hair::getStitches() {
         }
         stitches[ii] = tmp;
     }
-    for (size_t ii = initialIndex; ii+1 > 0; --ii) {
+    for (size_t ii = initialIndex; ii+1 > 0 && ii + 1 < stitches.size(); --ii) {
         auto tmp = projection(stitches[ii+1], _curves[ii]);
         if (!atLeastOneInside(tmp, _outline)) {
             break;
@@ -1405,6 +1409,7 @@ void Hair::getCurves() {
                     break;
                 }
                 lefts.push_back(left);
+                std::cout << "l " << ii << " " << left.size() << std::endl;
             }
         }
         //#pragma omp section
@@ -1415,6 +1420,7 @@ void Hair::getCurves() {
                     break;
                 }
                 rights.push_back(right);
+                std::cout << "r " << ii << " " << right.size() << std::endl;
             }
             rights.reverse(true);
             _curves.insert(_curves.begin(), rights.begin(), rights.end());
@@ -1429,6 +1435,10 @@ void Hair::getCurves() {
 void Hair::write(const char* filename) {
     std::ofstream out(filename);
     write(out);
+}
+
+void Hair::write(const std::string filename) {
+    write(filename.c_str());
 }
 
 

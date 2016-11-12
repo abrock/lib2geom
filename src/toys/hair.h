@@ -88,7 +88,7 @@ private:
      */
     Coord _offset = .31;
 
-    double _line_spacing = 2;
+    double _line_spacing = .25;
 
     /**
      * @brief areaGrow Make the area larger.
@@ -156,6 +156,8 @@ public:
      * @param filename
      */
     void writeStitches(const char* filename);
+
+    void writeStitches(const std::string filename);
 
     std::string outputStitch(Point p);
 
@@ -299,6 +301,8 @@ public:
     void getCurves();
 
     void write(const char* filename);
+
+    void write(const std::string filename);
 
     void write(std::ostream& out);
 

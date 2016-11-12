@@ -22,7 +22,7 @@ ADD_DEFINITIONS(
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g -ggdb -O0 -fopenmp")
 
-set_source_files_properties(hair.cpp PROPERTIES COMPILE_FLAGS "-std=c++11 -g -ggdb -O0")
+set_source_files_properties(hair.cpp PROPERTIES COMPILE_FLAGS "-std=c++11 -g -ggdb -O2")
 
 SET(2GEOM_TOYS-2_SRC
 2dsb2d
@@ -198,5 +198,5 @@ target_link_libraries(hair_impl embroideryarea)
 target_link_libraries(hair_impl 2geom)
 
 target_link_libraries(hair-test 2geom gtest gtest_main hair_impl memoryConsumption geom-pathstroke)
-target_link_libraries(hair 2geom hair_impl memoryConsumption geom-pathstroke)
+target_link_libraries(hair 2geom hair_impl memoryConsumption geom-pathstroke boost_system boost_filesystem)
 

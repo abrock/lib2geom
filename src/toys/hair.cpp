@@ -20,6 +20,7 @@
 #include <iostream>
 #include <fstream>
 #include <random>
+#include <boost/filesystem.hpp>
 
 #include "geom-pathstroke.h"
 
@@ -30,24 +31,46 @@ using namespace Geom;
 
 #include "hair.h"
 
+namespace fs = boost::filesystem;
+
 int main(int argc, char **argv) {
-    if (argc > 1) {
-        std::cout << "Argument 1: " << argv[1] << std::endl;
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " outlinefile curvefile" << std::endl;
+        return 0;
     }
-    PathVector boundary = read_svgd("svgd/tail-outline-1.svgd");
-    PathVector curve = read_svgd("svgd/tail-curve.svgd");
+    if (argc > 1) {
+        std::cerr << "Argument 1: " << argv[1] << std::endl;
+    }
+
+    fs::path full_path( fs::initial_path<fs::path>() );
+    std::cerr << "Current path: " << fs::current_path() << std::endl;
+    full_path = fs::system_complete( fs::path( argv[0] ) );
+    std::cerr << full_path << std::endl;
+    //Without file name
+    std::cerr << full_path.stem() << std::endl;
+    fs::current_path(full_path.remove_filename());
+
+
+    const std::string outline_file(argv[1]);
+    const std::string curve_file(argv[2]);
+    std::cout << "Outline file: " << outline_file << std::endl
+              << "Curve file: " << curve_file << std::endl;
+    PathVector boundary = read_svgd(outline_file.c_str());
+    PathVector curve = read_svgd(curve_file.c_str());
 
     Hair hair(boundary[0], curve[0]);
 
 
     hair.run2();
-    hair.write("tail-1-results.svg");
-    hair.writeStitches("tail-1-results.txt");
+    hair.write(outline_file + ".svg");
+    hair.writeStitches(outline_file + ".txt");
 
+    /*
     hair.writeAreas("tail-1-areas.svg");
 
     hair.writeForwardAreas("tail-1-forward-areas.svg");
     hair.writeReverseAreas("tail-1-reverse-areas.svg");
+    */
 
 
     return 0;
