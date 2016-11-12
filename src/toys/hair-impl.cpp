@@ -79,6 +79,10 @@ void Hair::writeStitches(const std::vector<Point>& stitches, const char* filenam
     writeStitches(stitches, out);
 }
 
+void Hair::writeStitches(const std::vector<Point>& stitches, const std::string filename) {
+    writeStitches(filename.c_str());
+}
+
 double Hair::getStitchLengthes(const std::vector<Point>& stitches, std::vector<double>& lengths) {
     lengths.resize(stitches.size());
     if (stitches.size() < 2) {

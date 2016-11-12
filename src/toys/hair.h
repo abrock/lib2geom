@@ -168,6 +168,12 @@ public:
      */
     void writeStitches(const std::vector<Point>& stitches, const char* filename);
 
+    /**
+     * @brief writeStitches Write the stitches into a text file suitable for libembroidery-convert
+     * @param filename
+     */
+    void writeStitches(const std::vector<Point>& stitches, const std::string filename);
+
     std::string outputStitch(Point p);
 
     void writeStitches(std::ostream& out);
