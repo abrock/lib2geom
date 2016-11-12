@@ -13,7 +13,7 @@ class EmbroideryArea : public std::vector<EmbroideryLine> {
 
 
 public:
-    const size_t min_level;
+    size_t min_level;
     std::vector<Point> forward_stitches;
     std::vector<Point> reverse_stitches;
     OutlineIntersection start;
@@ -36,6 +36,22 @@ public:
         for(; start != stop; start++) {
             container.push_back(Point(start->x(), start->y()));
         }
+    }
+
+    friend bool operator< (const EmbroideryArea &a, const EmbroideryArea &b) {
+        if (a.min_level < b.min_level) {
+            return true;
+        }
+        if (a.min_level > b.min_level) {
+            return false;
+        }
+        if (a.forward_stitches.size() < b.forward_stitches.size()) {
+            return true;
+        }
+        if (a.forward_stitches.size() > b.forward_stitches.size()) {
+            return false;
+        }
+        return a.size() < b.size();
     }
 
     /**

@@ -61,6 +61,24 @@ void Hair::writeStitches(std::ostream& out) {
     out << outputStitch(stitches.back().back()-offset) << " color:0 flags:16";
 }
 
+void Hair::writeStitches(const std::vector<Point>& stitches, std::ostream& out) {
+    if (stitches.empty()) {
+        return;
+    }
+
+    out << "0.0,0.0 color:0 flags:1" << std::endl;
+    out << outputStitch(stitches.front()) << " color:0 flags:1" << std::endl;
+    for (const Point stitch : stitches) {
+        out << outputStitch(stitch) << " color:0 flags:0" << std::endl;
+    }
+    out << outputStitch(stitches.back()) << " color:0 flags:16";
+}
+
+void Hair::writeStitches(const std::vector<Point>& stitches, const char* filename) {
+    std::ofstream out(filename);
+    writeStitches(stitches, out);
+}
+
 double Hair::getStitchLengthes(const std::vector<Point>& stitches, std::vector<double>& lengths) {
     lengths.resize(stitches.size());
     if (stitches.size() < 2) {
@@ -180,8 +198,75 @@ void Hair::run2() {
     std::cerr << "assemblePatches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
     std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
 
+    start2 = clock();
+    assembleGreedySolution();
+    stop2 = clock();
+    std::cerr << "assembleGreedySolution took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
+    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+
     clock_t stop = clock();
     std::cerr << "Calculation took " << (static_cast<double>(stop-start)) / CLOCKS_PER_SEC << std::endl << std::endl;
+}
+
+void Hair::assembleGreedySolution() {
+
+    greedySolution.clear();
+
+    greedySolution.insert(greedySolution.end(), _areas[0].forward_stitches.begin(), _areas[0].forward_stitches.end());
+    OutlineIntersection last_point = _areas[0].stop;
+
+    for (size_t ii = 1; ii < _areas.size(); ++ii) {
+        const EmbroideryArea& current_area = _areas[ii];
+        std::vector<Point> forward_bridge = getShortestConnection(last_point, current_area.start);
+        std::vector<Point> reverse_bridge = getShortestConnection(last_point, current_area.r_start);
+        if (forward_bridge.size() < reverse_bridge.size()) {
+            greedySolution.insert(greedySolution.end(), forward_bridge.begin(), forward_bridge.end());
+            greedySolution.insert(greedySolution.end(),
+                                  current_area.forward_stitches.begin(),
+                                  current_area.forward_stitches.end());
+            last_point = current_area.stop;
+        } else {
+            greedySolution.insert(greedySolution.end(), reverse_bridge.begin(), reverse_bridge.end());
+            greedySolution.insert(greedySolution.end(),
+                                  current_area.reverse_stitches.begin(),
+                                  current_area.reverse_stitches.end());
+            last_point = current_area.r_stop;
+        }
+    }
+
+    addStartStop(greedySolution);
+
+    std::vector<Point> greedy_solution_2;
+
+    greedy_solution_2.insert(greedy_solution_2.end(), _areas[0].reverse_stitches.begin(), _areas[0].reverse_stitches.end());
+    last_point = _areas[0].r_stop;
+
+    for (size_t ii = 1; ii < _areas.size(); ++ii) {
+        const EmbroideryArea& current_area = _areas[ii];
+        std::vector<Point> forward_bridge = getShortestConnection(last_point, current_area.start);
+        std::vector<Point> reverse_bridge = getShortestConnection(last_point, current_area.r_start);
+        if (forward_bridge.size() < reverse_bridge.size()) {
+            greedy_solution_2.insert(greedy_solution_2.end(), forward_bridge.begin(), forward_bridge.end());
+            greedy_solution_2.insert(greedy_solution_2.end(),
+                                  current_area.forward_stitches.begin(),
+                                  current_area.forward_stitches.end());
+            last_point = current_area.stop;
+        } else {
+            greedy_solution_2.insert(greedy_solution_2.end(), reverse_bridge.begin(), reverse_bridge.end());
+            greedy_solution_2.insert(greedy_solution_2.end(),
+                                  current_area.reverse_stitches.begin(),
+                                  current_area.reverse_stitches.end());
+            last_point = current_area.r_stop;
+        }
+    }
+
+    addStartStop(greedy_solution_2);
+
+    std::cout << "Greedy 1: " << greedySolution.size() << ", greedy 2: " << greedy_solution_2.size() << std::endl;
+
+    if (greedy_solution_2.size() < greedySolution.size()) {
+        greedySolution = greedy_solution_2;
+    }
 }
 
 double Hair::curveLength(const Geom::Path& curve,
@@ -507,6 +592,13 @@ void Hair::assembleAreas() {
 
     for (EmbroideryArea& area : _areas) {
         area.finish((*this));
+    }
+
+    std::sort(_areas.begin(), _areas.end());
+    std::cout << "Areas:" << std::endl;
+    std::cout << "min_level, forward_stitches.size(), size()" << std::endl;
+    for (const EmbroideryArea& area : _areas) {
+        std::cout << area.min_level << "\t" << area.forward_stitches.size() << "\t" << area.size() << std::endl;
     }
 }
 
