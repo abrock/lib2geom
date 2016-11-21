@@ -1545,6 +1545,7 @@ void Hair::write(const std::string filename) {
 
 
 
+
 void Hair::write(std::ostream& out) {
     writeSVGHead(out);
     out << "<g>";
@@ -1574,6 +1575,29 @@ void Hair::write(std::ostream& out) {
     out << "</svg>" << std::endl;
 }
 
+
+void Hair::writeCurves(const char* filename) {
+    std::ofstream out(filename);
+    writeCurves(out);
+}
+
+void Hair::writeCurves(const std::string filename) {
+    writeCurves(filename.c_str());
+}
+
+
+
+
+void Hair::writeCurves(std::ostream& out) {
+    writeSVGHead(out);
+    out << "<g>";
+    for (auto c : _curves) {
+        write(out, c, "aaaaaa");
+    }
+    out << "</g>";
+    write(out, _curve, "ff0000");
+    out << "</svg>" << std::endl;
+}
 
 void Hair::writeOutlineIntersections(std::ostream& out, std::vector<OutlineIntersection> &intersections) {
     std::vector<Point> points;

@@ -330,6 +330,11 @@ public:
 
     void write(std::ostream& out);
 
+    void writeCurves(const char* filename);
+    void writeCurves(const std::string filename);
+    void writeCurves(std::ostream& out);
+
+
     void write(std::ostream& out, Path path, std::string color);
 
     void writeStitchPoints(std::ostream& out, std::string color);
