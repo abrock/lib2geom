@@ -539,21 +539,211 @@ double offset_cubic_stable_sub(Geom::CubicBezier const& bez, Geom::CubicBezier& 
 
     // check the tolerance for our estimate to be a parallel curve
 
-    double residual = 0;
+    double residual_sum = 0;
 
     size_t counter = 0;
-    for (double t = 0; t <= 1.0; t += 0.1) {
+    double worst_residual = 0;
+    for (double t = 0; t <= 1.0; t += 0.01) {
         Geom::Point chk = c.pointAt(t);
         Geom::Point req = bez.pointAt(t);
-        residual += (chk-req).length() - width;
+        const double current_residual = (chk-req).length() - width;
+        residual_sum += current_residual;
+        if (std::abs(current_residual) > std::abs(worst_residual)) {
+            worst_residual = current_residual;
+        }
         counter++;
     }
 
-    return residual / counter;
+    return worst_residual;
+    //return residual_sum / counter;
 
 }
 
+
+double offset_cubic_stable_sub(Geom::CubicBezier const& bez, Geom::CubicBezier& c, const double width, const double width_correction_1, const double width_correction_2) {
+    using Geom::X;
+    using Geom::Y;
+
+    Geom::Point start_pos = bez.initialPoint();
+    Geom::Point end_pos = bez.finalPoint();
+
+    Geom::Point start_normal = Geom::rot90(bez.unitTangentAt(0));
+    Geom::Point end_normal = -Geom::rot90(Geom::unitTangentAt(Geom::reverse(bez.toSBasis()), 0.));
+
+    // offset the start and end control points out by the width
+    Geom::Point start_new = start_pos + start_normal*width;
+    Geom::Point end_new = end_pos + end_normal*width;
+
+    // --------
+    double start_rad, end_rad;
+    double start_len, end_len; // tangent lengths
+    get_cubic_data(bez, 0, start_len, start_rad);
+    get_cubic_data(bez, 1, end_len, end_rad);
+
+    double start_off = 1, end_off = 1;
+    // correction of the lengths of the tangent to the offset
+    if (!Geom::are_near(start_rad, 0))
+        start_off += (width + width_correction_1) / start_rad;
+    if (!Geom::are_near(end_rad, 0))
+        end_off += (width + width_correction_2) / end_rad;
+    start_off *= start_len;
+    end_off *= end_len;
+    // --------
+
+    Geom::Point mid1_new = start_normal.ccw()*start_off;
+    mid1_new = Geom::Point(start_new[X] + mid1_new[X]/3., start_new[Y] + mid1_new[Y]/3.);
+    Geom::Point mid2_new = end_normal.ccw()*end_off;
+    mid2_new = Geom::Point(end_new[X] - mid2_new[X]/3., end_new[Y] - mid2_new[Y]/3.);
+
+    // create the estimate curve
+    c = Geom::CubicBezier(start_new, mid1_new, mid2_new, end_new);
+
+    // check the tolerance for our estimate to be a parallel curve
+
+    double residual_sum = 0;
+
+    size_t counter = 0;
+    double worst_residual = 0;
+    double error_sum = 0;
+    double error_squaresum = 0;
+    for (double t = 0; t <= 1.0; t += 0.01) {
+        Geom::Point chk = c.pointAt(t);
+        Geom::Point req = bez.pointAt(t);
+        const double current_residual = (chk-req).length() - width;
+        const double current_error = std::abs(current_residual);
+        residual_sum += current_residual;
+        error_sum += current_error;
+        error_squaresum += current_error * current_error;
+        if (std::abs(current_residual) > std::abs(worst_residual)) {
+            worst_residual = current_residual;
+        }
+        counter++;
+    }
+
+    return std::sqrt(error_squaresum) / counter;
+    //return std::abs(worst_residual);
+    //return error_sum / counter;
+    //return worst_residual;
+    //return residual_sum / counter;
+
+}
+
+
 void offset_cubic_stable(Geom::Path& p, Geom::CubicBezier const& bez, double width, double tol, size_t levels)
+{
+
+    Geom::CubicBezier c;
+
+    double best_width_correction_1 = 0;
+    double best_width_correction_2 = 0;
+    double best_residual = offset_cubic_stable_sub(bez, c, width, best_width_correction_1, best_width_correction_2);
+    double stepsize = std::abs(width);
+
+    std::cout << "Residual from " << best_residual;
+    for (size_t ii = 0; ii < 100; ++ii) {
+        bool success = false;
+        const int sign = best_residual < 0 ? -1 : 1;
+        // Adjust both corrections at once
+        {
+            const double width_correction_1 = best_width_correction_1 + sign * stepsize;
+            const double width_correction_2 = best_width_correction_2 + sign * stepsize;
+            Geom::CubicBezier current_curve;
+            const double residual = offset_cubic_stable_sub(bez, current_curve, width, width_correction_1, width_correction_2);
+            if (std::abs(residual) < std::abs(best_residual)) {
+                best_residual = residual;
+                best_width_correction_1 = width_correction_1;
+                best_width_correction_2 = width_correction_2;
+                c = current_curve;
+                success = true;
+                std::cout << "+";
+            }
+        }
+        {
+            const double width_correction_1 = best_width_correction_1 - sign * stepsize;
+            const double width_correction_2 = best_width_correction_2 - sign * stepsize;
+            Geom::CubicBezier current_curve;
+            const double residual = offset_cubic_stable_sub(bez, current_curve, width, width_correction_1, width_correction_2);
+            if (std::abs(residual) < std::abs(best_residual)) {
+                best_residual = residual;
+                best_width_correction_1 = width_correction_1;
+                best_width_correction_2 = width_correction_2;
+                c = current_curve;
+                success = true;
+                std::cout << "-";
+            }
+        }
+
+        // Adjust only one correction at a time
+        {
+            const double width_correction_1 = best_width_correction_1 + sign * stepsize;
+            const double width_correction_2 = best_width_correction_2;
+            Geom::CubicBezier current_curve;
+            const double residual = offset_cubic_stable_sub(bez, current_curve, width, width_correction_1, width_correction_2);
+            if (std::abs(residual) < std::abs(best_residual)) {
+                best_residual = residual;
+                best_width_correction_1 = width_correction_1;
+                best_width_correction_2 = width_correction_2;
+                c = current_curve;
+                success = true;
+                std::cout << "+";
+            }
+        }
+        {
+            const double width_correction_1 = best_width_correction_1 - sign * stepsize;
+            const double width_correction_2 = best_width_correction_2;
+            Geom::CubicBezier current_curve;
+            const double residual = offset_cubic_stable_sub(bez, current_curve, width, width_correction_1, width_correction_2);
+            if (std::abs(residual) < std::abs(best_residual)) {
+                best_residual = residual;
+                best_width_correction_1 = width_correction_1;
+                best_width_correction_2 = width_correction_2;
+                c = current_curve;
+                success = true;
+                std::cout << "-";
+            }
+        }
+        // Adjust both corrections at once
+        {
+            const double width_correction_1 = best_width_correction_1;
+            const double width_correction_2 = best_width_correction_2 + sign * stepsize;
+            Geom::CubicBezier current_curve;
+            const double residual = offset_cubic_stable_sub(bez, current_curve, width, width_correction_1, width_correction_2);
+            if (std::abs(residual) < std::abs(best_residual)) {
+                best_residual = residual;
+                best_width_correction_1 = width_correction_1;
+                best_width_correction_2 = width_correction_2;
+                c = current_curve;
+                success = true;
+                std::cout << "+";
+            }
+        }
+        {
+            const double width_correction_1 = best_width_correction_1;
+            const double width_correction_2 = best_width_correction_2 - sign * stepsize;
+            Geom::CubicBezier current_curve;
+            const double residual = offset_cubic_stable_sub(bez, current_curve, width, width_correction_1, width_correction_2);
+            if (std::abs(residual) < std::abs(best_residual)) {
+                best_residual = residual;
+                best_width_correction_1 = width_correction_1;
+                best_width_correction_2 = width_correction_2;
+                c = current_curve;
+                success = true;
+                std::cout << "-";
+            }
+        }
+
+        if (!success) {
+            stepsize /= 2;
+        }
+    }
+    std::cout << " to " << best_residual << std::endl;
+
+    // we're good, curve is accurate enough
+    p.append(c);
+    return;
+}
+
+void offset_cubic_stable_old_single(Geom::Path& p, Geom::CubicBezier const& bez, double width, double tol, size_t levels)
 {
 
     Geom::CubicBezier c;
@@ -590,6 +780,7 @@ void offset_cubic_stable(Geom::Path& p, Geom::CubicBezier const& bez, double wid
                 std::cout << "-";
             }
         }
+
         if (!success) {
             stepsize /= 2;
         }
