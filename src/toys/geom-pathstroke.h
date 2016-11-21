@@ -60,6 +60,22 @@ Geom::PathVector outline(Geom::Path const& input, double width, double miter, Li
 Geom::Path half_outline(Geom::Path const& input, double width, double miter, LineJoinType join = JOIN_BEVEL);
 
 /**
+ * Offset the input path by @a width.
+ * Joins may behave oddly if the width is negative.
+ * Numerically stable version which does not lead to exponential increase in node count
+ * if applied repeatedly. Precision might be worse than the precision of half_outline, though.
+ *
+ * @param[in] input Input path.
+ * @param[in] width Amount to offset.
+ * @param[in] miter Miter limit. Only used when @a join is one of JOIN_MITER, JOIN_MITER_CLIP, and JOIN_EXTRAPOLATE.
+ * @param[in] join  Line join type used during offset. Member of LineJoinType enum.
+ *
+ * @return Offsetted output.
+ */
+Geom::Path half_outline_stable(Geom::Path const& input, double width, double miter, LineJoinType join = JOIN_BEVEL);
+
+
+/**
  * Builds a join on the provided path.
  * Joins may behave oddly if the width is negative.
  *

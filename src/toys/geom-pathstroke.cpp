@@ -498,6 +498,109 @@ void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, dou
     }
 }
 
+
+double offset_cubic_stable_sub(Geom::CubicBezier const& bez, Geom::CubicBezier& c, const double width, const double width_correction) {
+    using Geom::X;
+    using Geom::Y;
+
+    Geom::Point start_pos = bez.initialPoint();
+    Geom::Point end_pos = bez.finalPoint();
+
+    Geom::Point start_normal = Geom::rot90(bez.unitTangentAt(0));
+    Geom::Point end_normal = -Geom::rot90(Geom::unitTangentAt(Geom::reverse(bez.toSBasis()), 0.));
+
+    // offset the start and end control points out by the width
+    Geom::Point start_new = start_pos + start_normal*width;
+    Geom::Point end_new = end_pos + end_normal*width;
+
+    // --------
+    double start_rad, end_rad;
+    double start_len, end_len; // tangent lengths
+    get_cubic_data(bez, 0, start_len, start_rad);
+    get_cubic_data(bez, 1, end_len, end_rad);
+
+    double start_off = 1, end_off = 1;
+    // correction of the lengths of the tangent to the offset
+    if (!Geom::are_near(start_rad, 0))
+        start_off += (width + width_correction) / start_rad;
+    if (!Geom::are_near(end_rad, 0))
+        end_off += (width + width_correction) / end_rad;
+    start_off *= start_len;
+    end_off *= end_len;
+    // --------
+
+    Geom::Point mid1_new = start_normal.ccw()*start_off;
+    mid1_new = Geom::Point(start_new[X] + mid1_new[X]/3., start_new[Y] + mid1_new[Y]/3.);
+    Geom::Point mid2_new = end_normal.ccw()*end_off;
+    mid2_new = Geom::Point(end_new[X] - mid2_new[X]/3., end_new[Y] - mid2_new[Y]/3.);
+
+    // create the estimate curve
+    c = Geom::CubicBezier(start_new, mid1_new, mid2_new, end_new);
+
+    // check the tolerance for our estimate to be a parallel curve
+
+    double residual = 0;
+
+    size_t counter = 0;
+    for (double t = 0; t <= 1.0; t += 0.1) {
+        Geom::Point chk = c.pointAt(t);
+        Geom::Point req = bez.pointAt(t);
+        residual += (chk-req).length() - width;
+        counter++;
+    }
+
+    return residual / counter;
+
+}
+
+void offset_cubic_stable(Geom::Path& p, Geom::CubicBezier const& bez, double width, double tol, size_t levels)
+{
+
+    Geom::CubicBezier c;
+
+    double best_width_correction = 0;
+    double best_residual = offset_cubic_stable_sub(bez, c, width, best_width_correction);
+    double stepsize = std::abs(width);
+
+    std::cout << "Residual from " << best_residual;
+    for (size_t ii = 0; ii < 40; ++ii) {
+        bool success = false;
+        const int sign = best_residual < 0 ? -1 : 1;
+        {
+            const double width_correction = best_width_correction + sign * stepsize;
+            Geom::CubicBezier current_curve;
+            const double residual = offset_cubic_stable_sub(bez, current_curve, width, width_correction);
+            if (std::abs(residual) < std::abs(best_residual)) {
+                best_residual = residual;
+                best_width_correction = width_correction;
+                c = current_curve;
+                success = true;
+                std::cout << "+";
+            }
+        }
+        {
+            const double width_correction = best_width_correction - sign * stepsize;
+            Geom::CubicBezier current_curve;
+            const double residual = offset_cubic_stable_sub(bez, current_curve, width, width_correction);
+            if (std::abs(residual) < std::abs(best_residual)) {
+                best_residual = residual;
+                best_width_correction = width_correction;
+                c = current_curve;
+                success = true;
+                std::cout << "-";
+            }
+        }
+        if (!success) {
+            stepsize /= 2;
+        }
+    }
+    std::cout << " to " << best_residual << std::endl;
+
+    // we're good, curve is accurate enough
+    p.append(c);
+    return;
+}
+
 void offset_quadratic(Geom::Path& p, Geom::QuadraticBezier const& bez, double width, double tol, size_t levels)
 {
     // cheat
@@ -508,6 +611,18 @@ void offset_quadratic(Geom::Path& p, Geom::QuadraticBezier const& bez, double wi
     Geom::Point b2 = b1 + (1./3) * (points[2] - points[0]);
     Geom::CubicBezier cub = Geom::CubicBezier(points[0], b1, b2, points[2]);
     offset_cubic(p, cub, width, tol, levels);
+}
+
+void offset_quadratic_stable(Geom::Path& p, Geom::QuadraticBezier const& bez, double width, double tol, size_t levels)
+{
+    // cheat
+    // it's faster
+    // seriously
+    std::vector<Geom::Point> points = bez.controlPoints();
+    Geom::Point b1 = points[0] + (2./3) * (points[1] - points[0]);
+    Geom::Point b2 = b1 + (1./3) * (points[2] - points[0]);
+    Geom::CubicBezier cub = Geom::CubicBezier(points[0], b1, b2, points[2]);
+    offset_cubic_stable(p, cub, width, tol, levels);
 }
 
 void offset_curve(Geom::Path& res, Geom::Curve const* current, double width)
@@ -546,6 +661,45 @@ void offset_curve(Geom::Path& res, Geom::Curve const* current, double width)
         Geom::Path sbasis_path = Geom::cubicbezierpath_from_sbasis(current->toSBasis(), 0.1);
         for (size_t i = 0; i < sbasis_path.size(); ++i)
             offset_curve(res, &sbasis_path[i], width);
+    }
+}
+
+void offset_curve_stable(Geom::Path& res, Geom::Curve const* current, double width)
+{
+    double const tolerance = 0.0025;
+    size_t levels = 8;
+
+    if (current->isDegenerate()) return; // don't do anything
+
+    // TODO: we can handle SVGEllipticalArc here as well, do that!
+
+    if (Geom::BezierCurve const *b = dynamic_cast<Geom::BezierCurve const*>(current)) {
+        size_t order = b->order();
+        switch (order) {
+            case 1:
+                res.append(offset_line(static_cast<Geom::LineSegment const&>(*current), width));
+                break;
+            case 2: {
+                Geom::QuadraticBezier const& q = static_cast<Geom::QuadraticBezier const&>(*current);
+                offset_quadratic_stable(res, q, width, tolerance, levels);
+                break;
+            }
+            case 3: {
+                Geom::CubicBezier const& cb = static_cast<Geom::CubicBezier const&>(*current);
+                offset_cubic_stable(res, cb, width, tolerance, levels);
+                break;
+            }
+            default: {
+                Geom::Path sbasis_path = Geom::cubicbezierpath_from_sbasis(current->toSBasis(), tolerance);
+                for (size_t i = 0; i < sbasis_path.size(); ++i)
+                    offset_curve_stable(res, &sbasis_path[i], width);
+                break;
+            }
+        }
+    } else {
+        Geom::Path sbasis_path = Geom::cubicbezierpath_from_sbasis(current->toSBasis(), 0.1);
+        for (size_t i = 0; i < sbasis_path.size(); ++i)
+            offset_curve_stable(res, &sbasis_path[i], width);
     }
 }
 
@@ -665,6 +819,65 @@ Geom::Path half_outline(Geom::Path const& input, double width, double miter, Lin
         if (u < k - 1) {
             temp.clear();
             offset_curve(temp, &input[u+1], width);
+            tangents(tang, input[u], input[u+1]);
+            outline_join(res, temp, tang[0], tang[1], width, miter, join);
+        }
+    }
+
+    if (input.closed()) {
+        Geom::Curve const &c1 = res.back();
+        Geom::Curve const &c2 = res.front();
+        temp.clear();
+        temp.append(c1);
+        Geom::Path temp2;
+        temp2.append(c2);
+        tangents(tang, input.back(), input.front());
+        outline_join(temp, temp2, tang[0], tang[1], width, miter, join);
+        res.erase(res.begin());
+        res.erase_last();
+        //
+        res.append(temp);
+        res.close();
+    }
+
+    return res;
+}
+
+Geom::Path half_outline_stable(Geom::Path const& input, double width, double miter, LineJoinType join)
+{
+    Geom::Path res;
+    if (input.size() == 0) return res;
+
+    Geom::Point tang1 = input[0].unitTangentAt(0);
+    Geom::Point start = input.initialPoint() + tang1 * width;
+    Geom::Path temp;
+    Geom::Point tang[2];
+
+    res.setStitching(true);
+    temp.setStitching(true);
+
+    res.start(start);
+
+    // Do two curves at a time for efficiency, since the join function needs to know the outgoing curve as well
+    const size_t k = (input.back_closed().isDegenerate() && input.closed())
+            ?input.size_default()-1:input.size_default();
+    for (size_t u = 0; u < k; u += 2) {
+        temp.clear();
+
+        offset_curve_stable(temp, &input[u], width);
+
+        // on the first run through, there isn't a join
+        if (u == 0) {
+            res.append(temp);
+        } else {
+            tangents(tang, input[u-1], input[u]);
+            outline_join(res, temp, tang[0], tang[1], width, miter, join);
+        }
+
+        // odd number of paths
+        if (u < k - 1) {
+            temp.clear();
+            offset_curve_stable(temp, &input[u+1], width);
             tangents(tang, input[u], input[u+1]);
             outline_join(res, temp, tang[0], tang[1], width, miter, join);
         }

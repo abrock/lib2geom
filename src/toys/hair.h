@@ -88,7 +88,7 @@ private:
      */
     Coord _offset = .31;
 
-    double _line_spacing = .25;
+    double _line_spacing = .5;
 
     /**
      * @brief areaGrow Make the area larger.
@@ -98,7 +98,12 @@ private:
     /**
      * @brief miter Miter limit for the Inkscape::half_outline method. Paths are expected to be smooth so this limit shouldn't do anything at all.
      */
-    Coord _miter = 100;
+    Coord _miter = 0;
+
+    //Inkscape::LineJoinType _join_type = Inkscape::JOIN_MITER; // 4625
+    Inkscape::LineJoinType _join_type = Inkscape::JOIN_BEVEL; // 4625
+    // Inkscape::LineJoinType _join_type = Inkscape::JOIN_MITER_CLIP; // 1181
+    // Inkscape::LineJoinType _join_type = Inkscape::JOIN_EXTRAPOLATE; // too long
 
     /**
      * @brief stitchLength Initial stitch length used for the line in the middle.

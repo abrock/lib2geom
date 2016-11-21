@@ -1506,7 +1506,7 @@ void Hair::getCurves() {
         //#pragma omp section
         {
             for (size_t ii = 0; ii < _max_iter; ++ii) {
-                left = Inkscape::half_outline(left, _line_spacing, _miter);
+                left = Inkscape::half_outline_stable(left, _line_spacing, _miter, _join_type);
                 if (left.intersect(_outline).empty()) {
                     break;
                 }
@@ -1517,7 +1517,7 @@ void Hair::getCurves() {
         //#pragma omp section
         {
             for (size_t ii = 0; ii < _max_iter; ++ii) {
-                right = Inkscape::half_outline(right, _line_spacing, _miter);
+                right = Inkscape::half_outline_stable(right, _line_spacing, _miter, _join_type);
                 if (right.intersect(_outline).empty()) {
                     break;
                 }
