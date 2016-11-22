@@ -545,7 +545,7 @@ double offset_cubic_stable_sub(Geom::CubicBezier const& bez, Geom::CubicBezier& 
     double error_sum = 0;
     double error_squaresum = 0;
     sign = 1;
-    const double stepsize = .5/2;
+    const double stepsize = .5/10;
     for (double t = stepsize; t < 1.0; t += stepsize) {
         const Geom::Point req = bez.pointAt(t);
         const double c_time = c.nearestTime(req, std::max(0.0, t-.1), std::min(1.0, t+.1));
@@ -603,7 +603,7 @@ void offset_cubic_stable(Geom::Path& p, Geom::CubicBezier const& bez, double wid
                 success = true;
             }
         }
-
+/*
         // Adjust only one correction at a time
         {
             const double width_correction_1 = best_width_correction_1 - best_sign * stepsize;
@@ -663,7 +663,7 @@ void offset_cubic_stable(Geom::Path& p, Geom::CubicBezier const& bez, double wid
                 success = true;
             }
         }
-
+*/
         if (success) {
             if (!seen_success) {
                 seen_success = true;
@@ -673,10 +673,10 @@ void offset_cubic_stable(Geom::Path& p, Geom::CubicBezier const& bez, double wid
         else {
             stepsize /= 2;
         }
-        if (std::abs(best_width_correction_1) > std::abs(width)/2) {
+        if (std::abs(best_width_correction_1) > std::abs(width)) {
             break;
         }
-        if (std::abs(best_width_correction_2) > std::abs(width)/2) {
+        if (std::abs(best_width_correction_2) > std::abs(width)) {
             break;
         }
     }
@@ -689,11 +689,20 @@ void offset_cubic_stable(Geom::Path& p, Geom::CubicBezier const& bez, double wid
     }
 
 
-    Geom::Point chk = c.pointAt(.5);
-    Geom::Point req = bez.pointAt(.5) + Geom::rot90(bez.unitTangentAt(.5))*width; // required accuracy
+    double worst_err = 0;
+    double worst_time = 0;
+    const double test_stepsize = .01;
+    for (double t = test_stepsize; t < 1; t += .1) {
+        const Geom::Point req = bez.pointAt(t) + Geom::rot90(bez.unitTangentAt(t))*width; // required accuracy
+        const Geom::Point chk = c.pointAt(c.nearestTime(bez.pointAt(t)));
 
-    Geom::Point const diff = req - chk;
-    const double err = Geom::dot(diff, diff);
+        Geom::Point const diff = req - chk;
+        const double err = Geom::dot(diff, diff);
+        if (err > worst_err) {
+            worst_err = err;
+            worst_time = t;
+        }
+    }
 
     Geom::Point start_pos = bez.initialPoint();
 
@@ -702,7 +711,7 @@ void offset_cubic_stable(Geom::Path& p, Geom::CubicBezier const& bez, double wid
     // offset the start and end control points out by the width
     Geom::Point start_new = start_pos + start_normal*width;
 
-    if (err < tol) {
+    if (worst_err < tol) {
         if (Geom::are_near(start_new, p.finalPoint())) {
             p.setFinal(start_new); // if it isn't near, we throw
         }
@@ -712,7 +721,7 @@ void offset_cubic_stable(Geom::Path& p, Geom::CubicBezier const& bez, double wid
         return;
     } else {
         // split the curve in two
-        std::pair<Geom::CubicBezier, Geom::CubicBezier> s = bez.subdivide(.5);
+        std::pair<Geom::CubicBezier, Geom::CubicBezier> s = bez.subdivide(worst_time);
         offset_cubic_stable(p, s.first, width, tol, levels - 1);
         offset_cubic_stable(p, s.second, width, tol, levels - 1);
     }
