@@ -795,70 +795,12 @@ double _offset_cubic_stable_sub(
     return worst_residual;
 }
 
-<<<<<<< HEAD
 
 void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, double tol, size_t levels)
 {
     using Geom::X;
     using Geom::Y;
 
-=======
-double _offset_cubic_stable_sub(
-        Geom::CubicBezier const& bez,
-        Geom::CubicBezier& c,
-        const Geom::Point& start_normal,
-        const Geom::Point& end_normal,
-        const Geom::Point& start_new,
-        const Geom::Point& end_new,
-        const double start_rad,
-        const double end_rad,
-        const double start_len,
-        const double end_len,
-        const double width,
-        const double width_correction) {
-    using Geom::X;
-    using Geom::Y;
-
-    double start_off = 1, end_off = 1;
-    // correction of the lengths of the tangent to the offset
-    if (!Geom::are_near(start_rad, 0))
-        start_off += (width + width_correction) / start_rad;
-    if (!Geom::are_near(end_rad, 0))
-        end_off += (width + width_correction) / end_rad;
-    start_off *= start_len;
-    end_off *= end_len;
-    // --------
-
-    Geom::Point mid1_new = start_normal.ccw()*start_off;
-    mid1_new = Geom::Point(start_new[X] + mid1_new[X]/3., start_new[Y] + mid1_new[Y]/3.);
-    Geom::Point mid2_new = end_normal.ccw()*end_off;
-    mid2_new = Geom::Point(end_new[X] - mid2_new[X]/3., end_new[Y] - mid2_new[Y]/3.);
-
-    // create the estimate curve
-    c = Geom::CubicBezier(start_new, mid1_new, mid2_new, end_new);
-
-    // check the tolerance for our estimate to be a parallel curve
-
-    double worst_residual = 0;
-    for (size_t ii = 3; ii <= 7; ++ii) {
-        const double t = static_cast<double>(ii) / 10;
-        const Geom::Point req = bez.pointAt(t);
-        const Geom::Point chk = c.pointAt(c.nearestTime(req));
-        const double current_residual = (chk-req).length() - std::abs(width);
-        if (std::abs(current_residual) > std::abs(worst_residual)) {
-            worst_residual = current_residual;
-        }
-    }
-    return worst_residual;
-}
-
-
-void offset_cubic_stable(Geom::Path& p, Geom::CubicBezier const& bez, double width, double tol, size_t levels)
-{
-    using Geom::X;
-    using Geom::Y;
-
->>>>>>> old-state
     const Geom::Point start_pos = bez.initialPoint();
     const Geom::Point end_pos = bez.finalPoint();
 
@@ -986,13 +928,8 @@ void offset_quadratic(Geom::Path& p, Geom::QuadraticBezier const& bez, double wi
 
 void offset_curve(Geom::Path& res, Geom::Curve const* current, double width)
 {
-<<<<<<< HEAD
     double const tolerance = std::sqrt(0.0025);
     size_t levels = 8;
-=======
-    double const tolerance = 0.0025;
-    size_t const levels = 8;
->>>>>>> old-state
 
     if (current->isDegenerate()) return; // don't do anything
 
