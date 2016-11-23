@@ -9,14 +9,11 @@
 
 #include <iomanip>
 #include <2geom/path-sink.h>
-#include <2geom/point.h>
-#include <2geom/bezier-curve.h>
-#include <2geom/elliptical-arc.h>
 #include <2geom/sbasis-to-bezier.h> // cubicbezierpath_from_sbasis
 #include <2geom/path-intersection.h>
 #include <2geom/circle.h>
 
-#include "geom-pathstroke.h"
+#include "helper/geom-pathstroke.h"
 
 namespace Geom {
 
@@ -55,6 +52,53 @@ static Circle touching_circle( D2<SBasis> const &curve, double t, double tol=0.0
     return Geom::Circle(center, fabs(radius));
 }
 
+
+// Area of triangle given three corner points
+static double area( Geom::Point a, Geom::Point b, Geom::Point c ) {
+
+    using Geom::X;
+    using Geom::Y;
+    return( 0.5 * fabs( ( a[X]*(b[Y]-c[Y]) + b[X]*(c[Y]-a[Y]) + c[X]*(a[Y]-b[Y]) ) ) );
+}
+
+// Alternative touching circle routine directly using Beziers. Works only at end points.
+static Circle touching_circle( CubicBezier const &curve, bool start ) {
+
+    double k = 0;
+    Geom::Point p;
+    Geom::Point normal;
+    if ( start ) {
+        double distance = Geom::distance( curve[1], curve[0] );
+        k = 4.0/3.0 * area( curve[0], curve[1], curve[2] ) /
+            (distance * distance * distance);
+        if( Geom::cross(curve[0]-curve[1], curve[1]-curve[2]) < 0 ) {
+            k = -k;
+        }
+        p = curve[0];
+        normal = Geom::Point(curve[1] - curve[0]).cw();
+        normal.normalize();
+        // std::cout << "Start k: " << k << " d: " << distance << " normal: " << normal << std::endl;
+    } else {
+        double distance = Geom::distance( curve[3], curve[2] );
+        k = 4.0/3.0 * area( curve[1], curve[2], curve[3] ) /
+            (distance * distance * distance);
+        if( Geom::cross(curve[1]-curve[2], curve[2]-curve[3]) < 0 ) {
+            k = -k;
+        }
+        p = curve[3];
+        normal = Geom::Point(curve[3] - curve[2]).cw();
+        normal.normalize();
+        // std::cout << "End   k: " << k << " d: " << distance << " normal: " << normal << std::endl;
+    }
+    if( k == 0 ) {
+        return Geom::Circle( Geom::Point(0,std::numeric_limits<float>::infinity()),
+                             std::numeric_limits<float>::infinity());
+    } else {
+        double radius = 1/k;
+        Geom::Point center = p + normal * radius;
+        return Geom::Circle( center, fabs(radius) );
+    }
+}
 }
 
 namespace {
@@ -77,7 +121,7 @@ struct join_data {
 
     // line parameters
     double miter;
-    double width;
+    double width; // half stroke width
 };
 
 // Join functions must append the outgoing path
@@ -115,7 +159,9 @@ void miter_join_internal(join_data jd, bool clip)
     if (p.isFinite()) {
         // check size of miter
         Point point_on_path = incoming.finalPoint() + rot90(tang1)*width;
-        satisfied = distance(p, point_on_path) <= miter * 2.0 * width;
+        // SVG defines miter length as distance between inner intersection and outer intersection,
+        // which is twice the distance from p to point_on_path but width is half stroke width.
+        satisfied = distance(p, point_on_path) <= miter * width;
         if (satisfied) {
             // miter OK, check to see if we can do a relocation
             if (inc_ls) {
@@ -124,13 +170,16 @@ void miter_join_internal(join_data jd, bool clip)
                 res.appendNew<LineSegment>(p);
             }
         } else if (clip) {
+            // std::cout << "  Clipping ------------ " << std::endl;
             // miter needs clipping, find two points
             Point bisector_versor = Line(point_on_path, p).versor();
-            Point point_limit = point_on_path + miter * 2.0 * width * bisector_versor;
-
+            Point point_limit = point_on_path + miter * width * bisector_versor;
+            // std::cout << "     bisector_versor: " << bisector_versor << std::endl;
+            // std::cout << "     point_limit: " << point_limit << std::endl;
             Point p1 = intersection_point(incoming.finalPoint(), tang1, point_limit, bisector_versor.cw());
             Point p2 = intersection_point(outgoing.initialPoint(), tang2, point_limit, bisector_versor.cw());
-
+            // std::cout << "     p1: " << p1 << std::endl;
+            // std::cout << "     p2: " << p2 << std::endl;
             if (inc_ls) {
                 res.setFinal(p1);
             } else {
@@ -176,8 +225,132 @@ Geom::Point pick_solution(std::vector<Geom::ShapeIntersection> points, Geom::Poi
     return sol;
 }
 
-void extrapolate_join(join_data jd)
+// Arcs line join. If two circles don't intersect, expand inner circle.
+Geom::Point expand_circle( Geom::Circle &inner_circle, Geom::Circle const &outer_circle, Geom::Point const &start_pt, Geom::Point const &start_tangent ) {
+    // std::cout << "expand_circle:" << std::endl;
+    // std::cout << "  outer_circle: radius: " << outer_circle.radius() << "  center: " << outer_circle.center() << std::endl;
+    // std::cout << "  start: point: " << start_pt << "  tangent: " << start_tangent << std::endl;
+
+    if( !(outer_circle.contains(start_pt) ) ) {
+        // std::cout << "  WARNING: Outer circle does not contain starting point!" << std::endl;
+        return Geom::Point(0,0);
+    }
+
+    Geom::Line secant1(start_pt, start_pt + start_tangent);
+    std::vector<Geom::ShapeIntersection> chord1_pts = outer_circle.intersect(secant1);
+    // std::cout << "  chord1: " << chord1_pts[0].point() << ", " << chord1_pts[1].point() << std::endl;
+    Geom::LineSegment chord1(chord1_pts[0].point(), chord1_pts[1].point());
+
+    Geom::Line bisector = make_bisector_line( chord1 );
+    std::vector<Geom::ShapeIntersection> chord2_pts = outer_circle.intersect(bisector);
+    // std::cout << "  chord2: " << chord2_pts[0].point() << ", " << chord2_pts[1].point() << std::endl;
+    Geom::LineSegment chord2(chord2_pts[0].point(), chord2_pts[1].point());
+
+    // Find D, point on chord2 and on circle closest to start point
+    Geom::Coord d0 = Geom::distance(chord2_pts[0].point(),start_pt);
+    Geom::Coord d1 = Geom::distance(chord2_pts[1].point(),start_pt);
+    // std::cout << "  d0: " << d0 << " d1: " << d1 << std::endl;
+    Geom::Point d = (d0 < d1) ? chord2_pts[0].point() : chord2_pts[1].point();
+    Geom::Line da(d,start_pt);
+
+    // Chord through start point and point D
+    std::vector<Geom::ShapeIntersection> chord3_pts =  outer_circle.intersect(da);
+    // std::cout << "  chord3: " << chord3_pts[0].point() << ", " << chord3_pts[1].point() << std::endl;
+
+    // Find farthest point on chord3 and on circle (could be more robust)
+    Geom::Coord d2 = Geom::distance(chord3_pts[0].point(),d);
+    Geom::Coord d3 = Geom::distance(chord3_pts[1].point(),d);
+    // std::cout << "  d2: " << d2 << " d3: " << d3 << std::endl;
+
+    // Find point P, the intersection of outer circle and new inner circle
+    Geom::Point p = (d2 > d3) ? chord3_pts[0].point() : chord3_pts[1].point();
+
+    // Find center of new circle: it is at the intersection of the bisector
+    // of the chord defined by the start point and point P and a line through
+    // the start point and parallel to the first bisector.
+    Geom::LineSegment chord4(start_pt,p);
+    Geom::Line bisector2 = make_bisector_line( chord4 );
+    Geom::Line diameter = make_parallel_line( start_pt, bisector );
+    std::vector<Geom::ShapeIntersection> center_new = bisector2.intersect( diameter );
+    // std::cout << "  center_new: " << center_new[0].point() << std::endl;
+    Geom::Coord r_new = Geom::distance( center_new[0].point(), start_pt );
+    // std::cout << "  r_new: " << r_new << std::endl;
+
+    inner_circle.setCenter( center_new[0].point() );
+    inner_circle.setRadius( r_new );
+    return p;
+}
+
+// Arcs line join. If two circles don't intersect, adjust both circles so they just touch.
+// Increase (decrease) the radius of circle 1 and decrease (increase) of circle 2 by the same amount keeping the given points and tangents fixed.
+Geom::Point adjust_circles( Geom::Circle &circle1, Geom::Circle &circle2, Geom::Point const &point1, Geom::Point const &point2, Geom::Point const &tan1, Geom::Point const &tan2 ) {
+
+    Geom::Point n1 = (circle1.center() - point1).normalized(); // Always points towards center
+    Geom::Point n2 = (circle2.center() - point2).normalized();
+    Geom::Point sum_n = n1 + n2;
+
+    double r1 = circle1.radius();
+    double r2 = circle2.radius();
+    double delta_r = r2 - r1;
+    Geom::Point c1 = circle1.center();
+    Geom::Point c2 = circle2.center();
+    Geom::Point delta_c = c2 - c1;
+
+    // std::cout << "adjust_circles:" << std::endl;
+    // std::cout << "    norm: " << n1 << "; " << n2 << std::endl;
+    // std::cout << "    sum_n: " << sum_n << std::endl;
+    // std::cout << "    delta_r: " << delta_r << std::endl;
+    // std::cout << "    delta_c: " << delta_c << std::endl;
+
+    // Quadratic equation
+    double A = 4 - sum_n.length() * sum_n.length();
+    double B = 4.0 * delta_r - 2.0 * Geom::dot( delta_c, sum_n );
+    double C = delta_r * delta_r - delta_c.length() * delta_c.length();
+
+    double s1 = 0;
+    double s2 = 0;
+
+    if( fabs(A) < 0.01 ) {
+        // std::cout << "    A near zero! $$$$$$$$$$$$$$$$$$" << std::endl;
+        if( B != 0 ) {
+            s1 = -C/B;
+            s2 = -s1;
+        }
+    } else {
+        s1 = (-B + sqrt(B*B - 4*A*C))/(2*A);
+        s2 = (-B - sqrt(B*B - 4*A*C))/(2*A);
+    }
+
+    double dr = (fabs(s1)<=fabs(s2)?s1:s2);
+
+    // std::cout << "    A: " << A << std::endl;
+    // std::cout << "    B: " << B << std::endl;
+    // std::cout << "    C: " << C << std::endl;
+    // std::cout << "    s1: " << s1 << " s2: " << s2 << " dr: " << dr << std::endl;
+
+    circle1 = Geom::Circle( c1 - dr*n1, r1-dr );
+    circle2 = Geom::Circle( c2 + dr*n2, r2+dr );
+
+    // std::cout << "    C1: " << circle1 << std::endl;
+    // std::cout << "    C2: " << circle2 << std::endl;
+    // std::cout << "    d': " << Geom::Point( circle1.center() - circle2.center() ).length() << std::endl;
+
+    Geom::Line bisector( circle1.center(), circle2.center() );
+    std::vector<Geom::ShapeIntersection> points = circle1.intersect( bisector );
+    Geom::Point p0 = points[0].point();
+    Geom::Point p1 = points[1].point();
+    // std::cout << "    points: " << p0 << "; " << p1 << std::endl;
+    if( abs( Geom::distance( p0, circle2.center() ) - circle2.radius() ) <
+        abs( Geom::distance( p1, circle2.center() ) - circle2.radius() ) ) {
+        return p0;
+    } else {
+        return p1;
+    }
+}
+
+void extrapolate_join_internal(join_data jd, int alternative)
 {
+    // std::cout << "\nextrapolate_join: entrance: alternative: " << alternative << std::endl;
     using namespace Geom;
 
     Geom::Path &res = jd.res;
@@ -187,10 +360,40 @@ void extrapolate_join(join_data jd)
     Geom::Point endPt = outgoing.initialPoint();
     Geom::Point tang1 = jd.in_tang;
     Geom::Point tang2 = jd.out_tang;
+    // width is half stroke-width
     double width = jd.width, miter = jd.miter;
 
-    Geom::Circle circle1 = Geom::touching_circle(Geom::reverse(incoming.toSBasis()), 0.);
-    Geom::Circle circle2 = Geom::touching_circle(outgoing.toSBasis(), 0);
+    // std::cout << "  startPt: " << startPt << "  endPt: " << endPt << std::endl;
+    // std::cout << "  tang1: " << tang1 << "  tang2: " << tang2 <<  std::endl;
+    // std::cout << "    dot product: " << Geom::dot( tang1, tang2 ) <<  std::endl;
+    // std::cout << "  width: " << width << std::endl;
+
+    // CIRCLE CALCULATION TESTING
+    Geom::Circle circle1 = touching_circle(Geom::reverse(incoming.toSBasis()), 0.);
+    Geom::Circle circle2 = touching_circle(outgoing.toSBasis(), 0);
+    // std::cout << "  circle1: " << circle1 << std::endl;
+    // std::cout << "  circle2: " << circle2 << std::endl;
+    if( Geom::CubicBezier const * in_bezier = dynamic_cast<Geom::CubicBezier const*>(&incoming) ) {
+        Geom::Circle circle_test1 = touching_circle(*in_bezier, false);
+        if( !Geom::are_near( circle1, circle_test1, 0.01 ) ) {
+            // std::cout << "  Circle 1 error!!!!!!!!!!!!!!!!!" << std::endl;
+            // std::cout << "           " << circle_test1 << std::endl;
+        }
+    }
+    if( Geom::CubicBezier const * out_bezier = dynamic_cast<Geom::CubicBezier const*>(&outgoing) ) {
+        Geom::Circle circle_test2 = touching_circle(*out_bezier, true);
+        if( !Geom::are_near( circle2, circle_test2, 0.01 ) ) {
+            // std::cout << "  Circle 2 error!!!!!!!!!!!!!!!!!" << std::endl;
+            // std::cout << "           " << circle_test2 << std::endl;
+        }
+    }
+    // END TESTING
+
+    Geom::Point center1 = circle1.center();
+    Geom::Point center2 = circle2.center();
+    double side1 = tang1[Geom::X]*(startPt[Geom::Y]-center1[Geom::Y]) - tang1[Geom::Y]*(startPt[Geom::X]-center1[Geom::X]);
+    double side2 = tang2[Geom::X]*(  endPt[Geom::Y]-center2[Geom::Y]) - tang2[Geom::Y]*(  endPt[Geom::X]-center2[Geom::X]);
+    // std::cout << "  side1: " << side1 << "  side2: " << side2 << std::endl;
 
     bool inc_ls = !circle1.center().isFinite();
     bool out_ls = !circle2.center().isFinite();
@@ -199,20 +402,120 @@ void extrapolate_join(join_data jd)
 
     Geom::EllipticalArc *arc1 = NULL;
     Geom::EllipticalArc *arc2 = NULL;
+    Geom::LineSegment *seg1 = NULL;
+    Geom::LineSegment *seg2 = NULL;
     Geom::Point sol;
     Geom::Point p1;
     Geom::Point p2;
 
     if (!inc_ls && !out_ls) {
+        // std::cout << " two circles" << std::endl;
+
+        // See if tangent is backwards (radius < width/2 and circle is inside stroke).
+        Geom::Point node_on_path = startPt + Geom::rot90(tang1)*width;
+        // std::cout << "  node_on_path: " << node_on_path << "  -------------- " << std::endl;
+        bool b1 = false;
+        bool b2 = false;
+        if (circle1.radius() < width &&  distance( circle1.center(), node_on_path ) < width) {
+            b1 = true;
+        }
+        if (circle2.radius() < width &&  distance( circle2.center(), node_on_path ) < width) {
+            b2 = true;
+        }
+        // std::cout << "  b1: " << (b1?"true":"false")
+        //           << "  b2: " << (b2?"true":"false") << std::endl;
+
         // Two circles
         points = circle1.intersect(circle2);
+
+        if (points.size() != 2) {
+            // std::cout << "   Circles do not intersect, do backup" << std::endl;
+            switch (alternative) {
+                case 1:
+                {
+                    // Fallback to round if one path has radius smaller than half line width.
+                    if(b1 || b2) {
+                        // std::cout << "At one least path has radius smaller than half line width." << std::endl;
+                        return( round_join(jd) );
+                    }
+
+                    Point p;
+                    if( circle2.contains( startPt ) && !circle1.contains( endPt ) ) {
+                        // std::cout << "Expand circle1" << std::endl;
+                        p = expand_circle( circle1, circle2, startPt, tang1 );
+                        points.push_back( ShapeIntersection( 0, 0, p) );
+                        points.push_back( ShapeIntersection( 0, 0, p) );
+                    } else if( circle1.contains( endPt ) && !circle2.contains( startPt ) ) {
+                        // std::cout << "Expand circle2" << std::endl;
+                        p = expand_circle( circle2, circle1, endPt, tang2 );
+                        points.push_back( ShapeIntersection( 0, 0, p) );
+                        points.push_back( ShapeIntersection( 0, 0, p) );
+                    } else {
+                        // std::cout << "Either both points inside or both outside" << std::endl;
+                        return( miter_clip_join(jd) );
+                    }
+                    break;
+
+                }
+                case 2:
+                {
+                    // Fallback to round if one path has radius smaller than half line width.
+                    if(b1 || b2) {
+                        // std::cout << "At one least path has radius smaller than half line width." << std::endl;
+                        return( round_join(jd) );
+                    }
+
+                    if( ( circle2.contains( startPt ) && !circle1.contains( endPt ) ) ||
+                        ( circle1.contains( endPt ) && !circle2.contains( startPt ) ) ) {
+
+                        Geom::Point apex = adjust_circles( circle1, circle2, startPt, endPt, tang1, tang2 );
+                        points.push_back( ShapeIntersection( 0, 0, apex) );
+                        points.push_back( ShapeIntersection( 0, 0, apex) );
+                    } else {
+                        // std::cout << "Either both points inside or both outside" << std::endl;
+                        return( miter_clip_join(jd) );
+                    }
+
+                    break;
+                }
+                case 3:
+                    if( side1 > 0 ) {
+                        Geom::Line secant(startPt, startPt + tang1);
+                        points = circle2.intersect(secant);
+                        circle1.setRadius(std::numeric_limits<float>::infinity());
+                        circle1.setCenter(Geom::Point(0,std::numeric_limits<float>::infinity()));
+                    } else {
+                        Geom::Line secant(endPt, endPt + tang2);
+                        points = circle1.intersect(secant);
+                        circle2.setRadius(std::numeric_limits<float>::infinity());
+                        circle2.setCenter(Geom::Point(0,std::numeric_limits<float>::infinity()));
+                    }
+                    break;
+
+
+                case 0:
+                default:
+                    // Do nothing
+                    break;
+            }
+        }
+
         if (points.size() == 2) {
             sol = pick_solution(points, tang2, endPt);
-            arc1 = circle1.arc(startPt, 0.5*(startPt+sol), sol);
-            arc2 = circle2.arc(sol, 0.5*(sol+endPt), endPt);
+            if( circle1.radius() != std::numeric_limits<float>::infinity() ) {
+                arc1 = circle1.arc(startPt, 0.5*(startPt+sol), sol);
+            } else {
+                seg1 = new Geom::LineSegment(startPt, sol);
+            }
+            if( circle2.radius() != std::numeric_limits<float>::infinity() ) {
+                arc2 = circle2.arc(sol, 0.5*(sol+endPt), endPt);
+            } else {
+                seg2 = new Geom::LineSegment(sol, endPt);
+            }
         }
     } else if (inc_ls && !out_ls) {
         // Line and circle
+        // std::cout << " line circle" << std::endl;
         points = circle2.intersect(Line(incoming.initialPoint(), incoming.finalPoint()));
         if (points.size() == 2) {
             sol = pick_solution(points, tang2, endPt);
@@ -220,20 +523,22 @@ void extrapolate_join(join_data jd)
         }
     } else if (!inc_ls && out_ls) {
         // Circle and line
+        // std::cout << " circle line" << std::endl;
         points = circle1.intersect(Line(outgoing.initialPoint(), outgoing.finalPoint()));
         if (points.size() == 2) {
             sol = pick_solution(points, tang2, endPt);
             arc1 = circle1.arc(startPt, 0.5*(sol+startPt), sol);
         }
     }
-
-    if (points.size() != 2)
+    if (points.size() != 2) {
+        // std::cout << " no solutions" << std::endl;
         // no solutions available, fall back to miter
-        return miter_clip_join(jd);
+        return miter_join(jd);
+    }
 
     // We have a solution, thus sol is defined.
     p1 = sol;
-    
+
     // See if we need to clip. Miter length is measured along a circular arc that is tangent to the
     // bisector of the incoming and out going angles and passes through the end point (sol) of the
     // line join.
@@ -242,20 +547,21 @@ void extrapolate_join(join_data jd)
     // a chord connecting the path end point (point_on_path) and the join end point (sol).
     Geom::Point point_on_path = startPt + Geom::rot90(tang1)*width;
     Geom::Line bisector = make_angle_bisector_line(startPt, point_on_path, endPt);
-    Geom::Line ortho = make_orthogonal_line(point_on_path, bisector); 
+    Geom::Line ortho = make_orthogonal_line(point_on_path, bisector);
 
     Geom::LineSegment chord(point_on_path, sol);
     Geom::Line bisector_chord =  make_bisector_line(chord);
 
     Geom::Line limit_line;
-    double miter_limit = 2.0 * width * miter;
+    double miter_limit = width * miter;
     bool clipped = false;
-    
+
     if (are_parallel(bisector_chord, ortho)) {
         // No intersection (can happen if curvatures are equal but opposite)
         if (Geom::distance(point_on_path, sol) > miter_limit) {
             clipped = true;
-            Geom::Point limit_point = point_on_path + miter_limit * bisector.versor(); 
+            Geom::Point temp = bisector.versor();
+            Geom::Point limit_point = point_on_path + miter_limit * temp;
             limit_line = make_parallel_line( limit_point, ortho );
         }
     } else {
@@ -306,11 +612,13 @@ void extrapolate_join(join_data jd)
                 p2 = Geom::intersection_point(endPt, tang2, limit_line.pointAt(0), limit_line.versor());
             }
         }
-    }    
+    }
 
     // Add initial
     if (arc1) {
         res.append(*arc1);
+    } else if (seg1 ) {
+        res.append(*seg1);
     } else {
         // Straight line segment: move last point
         res.setFinal(p1);
@@ -324,6 +632,9 @@ void extrapolate_join(join_data jd)
     if (arc2) {
         res.append(*arc2);
         res.append(outgoing);
+    } else if (seg2 ) {
+        res.append(*seg2);
+        res.append(outgoing);
     } else {
         // Straight line segment:
         res.appendNew<Geom::LineSegment>(outgoing.finalPoint());
@@ -334,7 +645,15 @@ void extrapolate_join(join_data jd)
 
     delete arc1;
     delete arc2;
+    delete seg1;
+    delete seg2;
 }
+
+void extrapolate_join(     join_data jd) { extrapolate_join_internal(jd, 0); }
+void extrapolate_join_alt1(join_data jd) { extrapolate_join_internal(jd, 1); }
+void extrapolate_join_alt2(join_data jd) { extrapolate_join_internal(jd, 2); }
+void extrapolate_join_alt3(join_data jd) { extrapolate_join_internal(jd, 3); }
+
 
 void join_inside(join_data jd)
 {
@@ -391,11 +710,11 @@ Geom::LineSegment offset_line(Geom::LineSegment const& l, double width)
 
     Geom::Point start = l.initialPoint() + tang1 * width;
     Geom::Point end = l.finalPoint() - tang2 * width;
-    
+
     return Geom::LineSegment(start, end);
 }
 
-void  get_cubic_data(Geom::CubicBezier const& bez, double time, double& len, double& rad)
+void get_cubic_data(Geom::CubicBezier const& bez, double time, double& len, double& rad)
 {
     // get derivatives
     std::vector<Geom::Point> derivs = bez.pointAndDerivatives(time, 3);
@@ -427,76 +746,7 @@ void  get_cubic_data(Geom::CubicBezier const& bez, double time, double& len, dou
     len = l;
 }
 
-void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, double tol, size_t levels)
-{
-    using Geom::X;
-    using Geom::Y;
-
-    Geom::Point start_pos = bez.initialPoint();
-    Geom::Point end_pos = bez.finalPoint();
-
-    Geom::Point start_normal = Geom::rot90(bez.unitTangentAt(0));
-    Geom::Point end_normal = -Geom::rot90(Geom::unitTangentAt(Geom::reverse(bez.toSBasis()), 0.));
-
-    // offset the start and end control points out by the width
-    Geom::Point start_new = start_pos + start_normal*width;
-    Geom::Point end_new = end_pos + end_normal*width;
-
-    // --------
-    double start_rad, end_rad;
-    double start_len, end_len; // tangent lengths
-    get_cubic_data(bez, 0, start_len, start_rad);
-    get_cubic_data(bez, 1, end_len, end_rad);
-
-    double start_off = 1, end_off = 1;
-    // correction of the lengths of the tangent to the offset
-    if (!Geom::are_near(start_rad, 0))
-        start_off += width / start_rad;
-    if (!Geom::are_near(end_rad, 0))
-        end_off += width / end_rad;
-    start_off *= start_len;
-    end_off *= end_len;
-    // --------
-
-    Geom::Point mid1_new = start_normal.ccw()*start_off;
-    mid1_new = Geom::Point(start_new[X] + mid1_new[X]/3., start_new[Y] + mid1_new[Y]/3.);
-    Geom::Point mid2_new = end_normal.ccw()*end_off;
-    mid2_new = Geom::Point(end_new[X] - mid2_new[X]/3., end_new[Y] - mid2_new[Y]/3.);
-
-    // create the estimate curve
-    Geom::CubicBezier c = Geom::CubicBezier(start_new, mid1_new, mid2_new, end_new);
-
-    // reached maximum recursive depth
-    // don't bother with any more correction
-    if (levels == 0) {
-        p.append(c);
-        return;
-    }
-
-    // check the tolerance for our estimate to be a parallel curve
-    Geom::Point chk = c.pointAt(.5);
-    Geom::Point req = bez.pointAt(.5) + Geom::rot90(bez.unitTangentAt(.5))*width; // required accuracy
-
-    Geom::Point const diff = req - chk;
-    double const err = Geom::dot(diff, diff);
-
-    if (err < tol) {
-        if (Geom::are_near(start_new, p.finalPoint())) {
-            p.setFinal(start_new); // if it isn't near, we throw
-        }
-
-        // we're good, curve is accurate enough
-        p.append(c);
-        return;
-    } else {
-        // split the curve in two
-        std::pair<Geom::CubicBezier, Geom::CubicBezier> s = bez.subdivide(.5);
-        offset_cubic(p, s.first, width, tol, levels - 1);
-        offset_cubic(p, s.second, width, tol, levels - 1);
-    }
-}
-
-double offset_cubic_stable_sub(
+double _offset_cubic_stable_sub(
         Geom::CubicBezier const& bez,
         Geom::CubicBezier& c,
         const Geom::Point& start_normal,
@@ -530,18 +780,14 @@ double offset_cubic_stable_sub(
     // create the estimate curve
     c = Geom::CubicBezier(start_new, mid1_new, mid2_new, end_new);
 
-    // We find the point on our new curve (c) for which the distance between
-    // (c) and (bez) differs the most from the desired distance (width).
+    // check the tolerance for our estimate to be a parallel curve
+
     double worst_residual = 0;
-    const double stepsize = .5/10;
-    for (double t = stepsize; t < 1.0; t += stepsize) {
+    for (size_t ii = 3; ii <= 7; ++ii) {
+        const double t = static_cast<double>(ii) / 10;
         const Geom::Point req = bez.pointAt(t);
-        // We use the exact solution with nearestTime because it is numerically
-        // much more stable than simply assuming that the point on (c) closest
-        // to bez.pointAt(t) is given by c.pointAt(t)
-        const double c_time = c.nearestTime(req);
-        const Geom::Point chk = c.pointAt(c_time);
-        const double current_residual = (chk-req).length() - width;
+        const Geom::Point chk = c.pointAt(c.nearestTime(req));
+        const double current_residual = (chk-req).length() - std::abs(width);
         if (std::abs(current_residual) > std::abs(worst_residual)) {
             worst_residual = current_residual;
         }
@@ -550,7 +796,7 @@ double offset_cubic_stable_sub(
 }
 
 
-void offset_cubic_stable(Geom::Path& p, Geom::CubicBezier const& bez, double width, double tol, size_t levels)
+void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, double tol, size_t levels)
 {
     using Geom::X;
     using Geom::Y;
@@ -571,91 +817,54 @@ void offset_cubic_stable(Geom::Path& p, Geom::CubicBezier const& bez, double wid
     get_cubic_data(bez, 0, start_len, start_rad);
     get_cubic_data(bez, 1, end_len, end_rad);
 
+
     Geom::CubicBezier c;
 
     double best_width_correction = 0;
-    double best_residual = offset_cubic_stable_sub(
+    double best_residual = _offset_cubic_stable_sub(
                 bez, c,
                 start_normal, end_normal,
                 start_new, end_new,
                 start_rad, end_rad,
                 start_len, end_len,
                 width, best_width_correction);
-    double stepsize = std::abs(width);
+    double stepsize = std::abs(width)/2;
     bool seen_success = false;
     double stepsize_threshold = 0;
     // std::cout << "Residual from " << best_residual << " ";
     size_t ii = 0;
     for (; ii < 100 && stepsize > stepsize_threshold; ++ii) {
+        bool success = false;
         const double width_correction = best_width_correction - (best_residual > 0 ? 1 : -1) * stepsize;
         Geom::CubicBezier current_curve;
-        double residual = 0;
-        /*
-        residual = offset_cubic_stable_sub(
-                    bez, c,
+        const double residual = _offset_cubic_stable_sub(
+                    bez, current_curve,
                     start_normal, end_normal,
                     start_new, end_new,
                     start_rad, end_rad,
                     start_len, end_len,
                     width, width_correction);
-                    //*/
-        //*
-        {
-            double start_off = 1, end_off = 1;
-            // correction of the lengths of the tangent to the offset
-            if (!Geom::are_near(start_rad, 0))
-                start_off += (width + width_correction) / start_rad;
-            if (!Geom::are_near(end_rad, 0))
-                end_off += (width + width_correction) / end_rad;
-            start_off *= start_len;
-            end_off *= end_len;
-            // --------
-
-            Geom::Point mid1_new = start_normal.ccw()*start_off;
-            mid1_new = Geom::Point(start_new[X] + mid1_new[X]/3., start_new[Y] + mid1_new[Y]/3.);
-            Geom::Point mid2_new = end_normal.ccw()*end_off;
-            mid2_new = Geom::Point(end_new[X] - mid2_new[X]/3., end_new[Y] - mid2_new[Y]/3.);
-
-            // create the estimate curve
-            c = Geom::CubicBezier(start_new, mid1_new, mid2_new, end_new);
-
-            // We find the point on our new curve (c) for which the distance between
-            // (c) and (bez) differs the most from the desired distance (width).
-            const double residual_test_stepsize = .5/10;
-            for (double t = residual_test_stepsize; t < 1.0; t += residual_test_stepsize) {
-                const Geom::Point req = bez.pointAt(t);
-                // We use the exact solution with nearestTime because it is numerically
-                // much more stable than simply assuming that the point on (c) closest
-                // to bez.pointAt(t) is given by c.pointAt(t)
-                const double c_time = c.nearestTime(req);
-                const Geom::Point chk = c.pointAt(c_time);
-                const double current_residual = (chk-req).length() - width;
-                if (std::abs(current_residual) > std::abs(residual)) {
-                    residual = current_residual;
-                }
-            }
-        }
-        // */
         if (std::abs(residual) < std::abs(best_residual)) {
             best_residual = residual;
             best_width_correction = width_correction;
             c = current_curve;
+            success = true;
+            if (std::abs(best_residual) < tol/4) {
+                break;
+            }
+        }
+
+        if (success) {
             if (!seen_success) {
-                // If this is the first stepsize for which the maximum error is decreased
-                // we set the stepsize threshold to the current stepsize / 10^5.
-                // This is the convergence criterion
                 seen_success = true;
-                stepsize_threshold = stepsize / 100000;
+                //std::cout << "Stepsize factor: " << std::abs(width) / stepsize << std::endl;
+                stepsize_threshold = stepsize / 1000;
             }
         }
         else {
             stepsize /= 2;
         }
-        // Abort if the adjustment becomes too large to avoid numerical instabilities
-        // In this case more subdivisions are used.
-        // In tests this occurs not that often, usually the loop terminates
-        // Because the stepsize threshold is reached.
-        if (std::abs(best_width_correction) > std::abs(width)) {
+        if (std::abs(best_width_correction) >= std::abs(width)/2) {
             break;
         }
     }
@@ -667,23 +876,27 @@ void offset_cubic_stable(Geom::Path& p, Geom::CubicBezier const& bez, double wid
         return;
     }
 
-
-    double worst_err = 0;
-    double worst_time = 0;
-    const double test_stepsize = .01;
-    // Find the point on the curve (c) where the distance to (bez) differs the most from
-    // the desired distance (width).
-    for (double t = test_stepsize; t < 1; t += .1) {
-        const Geom::Point req = bez.pointAt(t) + Geom::rot90(bez.unitTangentAt(t))*width; // required accuracy
-        const Geom::Point chk = c.pointAt(c.nearestTime(bez.pointAt(t)));
+    // We find the point on our new curve (c) for which the distance between
+    // (c) and (bez) differs the most from the desired distance (width).
+    double worst_err = std::abs(best_residual);
+    double worst_time = .5;
+    //*
+    for (size_t ii = 3; ii <= 7; ++ii) {
+        const double t = static_cast<double>(ii) / 10;
+        const Geom::Point req = bez.pointAt(t);
+        // We use the exact solution with nearestTime because it is numerically
+        // much more stable than simply assuming that the point on (c) closest
+        // to bez.pointAt(t) is given by c.pointAt(t)
+        const Geom::Point chk = c.pointAt(c.nearestTime(req));
 
         Geom::Point const diff = req - chk;
-        const double err = Geom::dot(diff, diff);
+        const double err = std::abs(diff.length() - std::abs(width));
         if (err > worst_err) {
             worst_err = err;
             worst_time = t;
         }
     }
+   // */
 
     if (worst_err < tol) {
         if (Geom::are_near(start_new, p.finalPoint())) {
@@ -694,10 +907,10 @@ void offset_cubic_stable(Geom::Path& p, Geom::CubicBezier const& bez, double wid
         p.append(c);
         return;
     } else {
-        // split the curve in two at the point where the error is worst.
+        // split the curve in two
         std::pair<Geom::CubicBezier, Geom::CubicBezier> s = bez.subdivide(worst_time);
-        offset_cubic_stable(p, s.first, width, tol, levels - 1);
-        offset_cubic_stable(p, s.second, width, tol, levels - 1);
+        offset_cubic(p, s.first, width, tol, levels - 1);
+        offset_cubic(p, s.second, width, tol, levels - 1);
     }
 }
 
@@ -713,21 +926,9 @@ void offset_quadratic(Geom::Path& p, Geom::QuadraticBezier const& bez, double wi
     offset_cubic(p, cub, width, tol, levels);
 }
 
-void offset_quadratic_stable(Geom::Path& p, Geom::QuadraticBezier const& bez, double width, double tol, size_t levels)
-{
-    // cheat
-    // it's faster
-    // seriously
-    std::vector<Geom::Point> points = bez.controlPoints();
-    Geom::Point b1 = points[0] + (2./3) * (points[1] - points[0]);
-    Geom::Point b2 = b1 + (1./3) * (points[2] - points[0]);
-    Geom::CubicBezier cub = Geom::CubicBezier(points[0], b1, b2, points[2]);
-    offset_cubic_stable(p, cub, width, tol, levels);
-}
-
 void offset_curve(Geom::Path& res, Geom::Curve const* current, double width)
 {
-    double const tolerance = 0.0025;
+    double const tolerance = std::sqrt(0.0025);
     size_t levels = 8;
 
     if (current->isDegenerate()) return; // don't do anything
@@ -761,45 +962,6 @@ void offset_curve(Geom::Path& res, Geom::Curve const* current, double width)
         Geom::Path sbasis_path = Geom::cubicbezierpath_from_sbasis(current->toSBasis(), 0.1);
         for (size_t i = 0; i < sbasis_path.size(); ++i)
             offset_curve(res, &sbasis_path[i], width);
-    }
-}
-
-void offset_curve_stable(Geom::Path& res, Geom::Curve const* current, double width)
-{
-    double const tolerance = 0.0025/40;
-    size_t levels = 8;
-
-    if (current->isDegenerate()) return; // don't do anything
-
-    // TODO: we can handle SVGEllipticalArc here as well, do that!
-
-    if (Geom::BezierCurve const *b = dynamic_cast<Geom::BezierCurve const*>(current)) {
-        size_t order = b->order();
-        switch (order) {
-            case 1:
-                res.append(offset_line(static_cast<Geom::LineSegment const&>(*current), width));
-                break;
-            case 2: {
-                Geom::QuadraticBezier const& q = static_cast<Geom::QuadraticBezier const&>(*current);
-                offset_quadratic_stable(res, q, width, tolerance, levels);
-                break;
-            }
-            case 3: {
-                Geom::CubicBezier const& cb = static_cast<Geom::CubicBezier const&>(*current);
-                offset_cubic_stable(res, cb, width, tolerance, levels);
-                break;
-            }
-            default: {
-                Geom::Path sbasis_path = Geom::cubicbezierpath_from_sbasis(current->toSBasis(), tolerance);
-                for (size_t i = 0; i < sbasis_path.size(); ++i)
-                    offset_curve_stable(res, &sbasis_path[i], width);
-                break;
-            }
-        }
-    } else {
-        Geom::Path sbasis_path = Geom::cubicbezierpath_from_sbasis(current->toSBasis(), 0.1);
-        for (size_t i = 0; i < sbasis_path.size(); ++i)
-            offset_curve_stable(res, &sbasis_path[i], width);
     }
 }
 
@@ -837,6 +999,8 @@ void peak_cap(Geom::PathBuilder& res, Geom::Path const& with_dir, Geom::Path con
 
 } // namespace
 
+#include <2geom/svg-path-writer.h>
+
 namespace Inkscape {
 
 Geom::PathVector outline(Geom::Path const& input, double width, double miter, LineJoinType join, LineCapType butt)
@@ -846,6 +1010,9 @@ Geom::PathVector outline(Geom::Path const& input, double width, double miter, Li
     Geom::PathBuilder res;
     Geom::Path with_dir = half_outline(input, width/2., miter, join);
     Geom::Path against_dir = half_outline(input.reversed(), width/2., miter, join);
+    std::cout << "in: " << input.size() << "  out: " << with_dir.size() << " and " << against_dir.size() << std::endl;
+    std::cout << write_svg_path(input) << std::endl
+              << width << std::endl;
 
     res.moveTo(with_dir[0].initialPoint());
     res.append(with_dir);
@@ -943,65 +1110,6 @@ Geom::Path half_outline(Geom::Path const& input, double width, double miter, Lin
     return res;
 }
 
-Geom::Path half_outline_stable(Geom::Path const& input, double width, double miter, LineJoinType join)
-{
-    Geom::Path res;
-    if (input.size() == 0) return res;
-
-    Geom::Point tang1 = input[0].unitTangentAt(0);
-    Geom::Point start = input.initialPoint() + tang1 * width;
-    Geom::Path temp;
-    Geom::Point tang[2];
-
-    res.setStitching(true);
-    temp.setStitching(true);
-
-    res.start(start);
-
-    // Do two curves at a time for efficiency, since the join function needs to know the outgoing curve as well
-    const size_t k = (input.back_closed().isDegenerate() && input.closed())
-            ?input.size_default()-1:input.size_default();
-    for (size_t u = 0; u < k; u += 2) {
-        temp.clear();
-
-        offset_curve_stable(temp, &input[u], width);
-
-        // on the first run through, there isn't a join
-        if (u == 0) {
-            res.append(temp);
-        } else {
-            tangents(tang, input[u-1], input[u]);
-            outline_join(res, temp, tang[0], tang[1], width, miter, join);
-        }
-
-        // odd number of paths
-        if (u < k - 1) {
-            temp.clear();
-            offset_curve_stable(temp, &input[u+1], width);
-            tangents(tang, input[u], input[u+1]);
-            outline_join(res, temp, tang[0], tang[1], width, miter, join);
-        }
-    }
-
-    if (input.closed()) {
-        Geom::Curve const &c1 = res.back();
-        Geom::Curve const &c2 = res.front();
-        temp.clear();
-        temp.append(c1);
-        Geom::Path temp2;
-        temp2.append(c2);
-        tangents(tang, input.back(), input.front());
-        outline_join(temp, temp2, tang[0], tang[1], width, miter, join);
-        res.erase(res.begin());
-        res.erase_last();
-        //
-        res.append(temp);
-        res.close();
-    }
-
-    return res;
-}
-
 void outline_join(Geom::Path &res, Geom::Path const& temp, Geom::Point in_tang, Geom::Point out_tang, double width, double miter, Inkscape::LineJoinType join)
 {
     if (res.size() == 0 || temp.size() == 0)
@@ -1030,6 +1138,15 @@ void outline_join(Geom::Path &res, Geom::Path const& temp, Geom::Point in_tang, 
                 break;
             case Inkscape::JOIN_EXTRAPOLATE:
                 jf = &extrapolate_join;
+                break;
+            case Inkscape::JOIN_EXTRAPOLATE1:
+                jf = &extrapolate_join_alt1;
+                break;
+            case Inkscape::JOIN_EXTRAPOLATE2:
+                jf = &extrapolate_join_alt2;
+                break;
+            case Inkscape::JOIN_EXTRAPOLATE3:
+                jf = &extrapolate_join_alt3;
                 break;
             case Inkscape::JOIN_MITER_CLIP:
                 jf = &miter_clip_join;

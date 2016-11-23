@@ -22,7 +22,7 @@
 #include <random>
 #include <boost/filesystem.hpp>
 
-#include "geom-pathstroke.h"
+#include "helper/geom-pathstroke.h"
 
 #include "RunningStats.h"
 

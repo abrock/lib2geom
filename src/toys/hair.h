@@ -26,7 +26,7 @@
 #include <fstream>
 #include <random>
 
-#include "geom-pathstroke.h"
+#include "helper/geom-pathstroke.h"
 
 #include "RunningStats.h"
 
