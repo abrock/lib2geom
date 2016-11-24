@@ -9,6 +9,9 @@ implicitization-test
 #rtree-performance-test
 )
 
+find_package(Boost COMPONENTS system filesystem REQUIRED)
+add_subdirectory(libRunningStats)
+
 # Use this variable for GTest tests which should have a default main().
 SET(2GEOM_GTESTS_SRC
 affine-test
@@ -28,7 +31,10 @@ point-test
 polynomial-test
 rect-test
 sbasis-test
+half-outline-test
 )
+
+file(COPY "half-outline-paths" DESTINATION ".")
 
 FOREACH(source ${2GEOM_GTESTS_SRC})
 	ADD_EXECUTABLE(${source} ${source}.cpp)
@@ -41,3 +47,9 @@ FOREACH(source ${2GEOM_TESTS_SRC})
     TARGET_LINK_LIBRARIES(${source} 2geom ${LINK_GSL} ${GTK2_LINK_FLAGS} gtest)
     ADD_TEST(NAME ${source} COMMAND ${source})
 ENDFOREACH(source)
+
+target_link_libraries(half-outline-test RunningStats)
+target_link_libraries(half-outline-test ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY})
+target_link_libraries(half-outline-test geom-pathstroke 2geom)
+
+
