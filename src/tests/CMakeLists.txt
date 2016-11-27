@@ -34,7 +34,9 @@ sbasis-test
 half-outline-test
 )
 
-file(COPY "half-outline-paths" DESTINATION ".")
+file(COPY "half-outline-difficult-paths" DESTINATION ".")
+file(COPY "half-outline-simple-paths" DESTINATION ".")
+file(COPY "half-outline-known-issues" DESTINATION ".")
 
 FOREACH(source ${2GEOM_GTESTS_SRC})
 	ADD_EXECUTABLE(${source} ${source}.cpp)

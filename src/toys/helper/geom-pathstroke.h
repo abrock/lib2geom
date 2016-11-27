@@ -33,6 +33,8 @@ enum LineCapType {
     BUTT_PEAK, // This is not a line ending supported by the SVG standard.
 };
 
+void offset_curve(Geom::Path& res, Geom::Curve const* current, double width);
+
 /**
  * Strokes the path given by @a input.
  * Joins may behave oddly if the width is negative.

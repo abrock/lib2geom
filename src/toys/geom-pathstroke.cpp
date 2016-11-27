@@ -865,14 +865,27 @@ void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, dou
             stepsize /= 2;
         }
         if (std::abs(best_width_correction) >= std::abs(width)/2) {
-            break;
+            //break;
         }
     }
 
     // reached maximum recursive depth
     // don't bother with any more correction
     if (levels == 0) {
-        p.append(c);
+        try {
+            p.append(c);
+        }
+        catch (...) {
+            if ((p.finalPoint() - c.initialPoint()).length() < 1e-6) {
+                c.setInitial(p.finalPoint());
+            }
+            else {
+                auto line = Geom::LineSegment(p.finalPoint(), c.initialPoint());
+                p.append(line);
+            }
+            p.append(c);
+        }
+
         return;
     }
 
@@ -880,7 +893,7 @@ void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, dou
     // (c) and (bez) differs the most from the desired distance (width).
     double worst_err = std::abs(best_residual);
     double worst_time = .5;
-    //*
+    /*
     for (size_t ii = 3; ii <= 7; ++ii) {
         const double t = static_cast<double>(ii) / 10;
         const Geom::Point req = bez.pointAt(t);
@@ -926,44 +939,7 @@ void offset_quadratic(Geom::Path& p, Geom::QuadraticBezier const& bez, double wi
     offset_cubic(p, cub, width, tol, levels);
 }
 
-void offset_curve(Geom::Path& res, Geom::Curve const* current, double width)
-{
-    double const tolerance = std::sqrt(0.0025);
-    size_t levels = 8;
 
-    if (current->isDegenerate()) return; // don't do anything
-
-    // TODO: we can handle SVGEllipticalArc here as well, do that!
-
-    if (Geom::BezierCurve const *b = dynamic_cast<Geom::BezierCurve const*>(current)) {
-        size_t order = b->order();
-        switch (order) {
-            case 1:
-                res.append(offset_line(static_cast<Geom::LineSegment const&>(*current), width));
-                break;
-            case 2: {
-                Geom::QuadraticBezier const& q = static_cast<Geom::QuadraticBezier const&>(*current);
-                offset_quadratic(res, q, width, tolerance, levels);
-                break;
-            }
-            case 3: {
-                Geom::CubicBezier const& cb = static_cast<Geom::CubicBezier const&>(*current);
-                offset_cubic(res, cb, width, tolerance, levels);
-                break;
-            }
-            default: {
-                Geom::Path sbasis_path = Geom::cubicbezierpath_from_sbasis(current->toSBasis(), tolerance);
-                for (size_t i = 0; i < sbasis_path.size(); ++i)
-                    offset_curve(res, &sbasis_path[i], width);
-                break;
-            }
-        }
-    } else {
-        Geom::Path sbasis_path = Geom::cubicbezierpath_from_sbasis(current->toSBasis(), 0.1);
-        for (size_t i = 0; i < sbasis_path.size(); ++i)
-            offset_curve(res, &sbasis_path[i], width);
-    }
-}
 
 typedef void cap_func(Geom::PathBuilder& res, Geom::Path const& with_dir, Geom::Path const& against_dir, double width);
 
@@ -1002,6 +978,45 @@ void peak_cap(Geom::PathBuilder& res, Geom::Path const& with_dir, Geom::Path con
 #include <2geom/svg-path-writer.h>
 
 namespace Inkscape {
+
+void offset_curve(Geom::Path& res, Geom::Curve const* current, double width)
+{
+    double const tolerance = std::sqrt(.0025);
+    size_t levels = 2;
+
+    if (current->isDegenerate()) return; // don't do anything
+
+    // TODO: we can handle SVGEllipticalArc here as well, do that!
+
+    if (Geom::BezierCurve const *b = dynamic_cast<Geom::BezierCurve const*>(current)) {
+        size_t order = b->order();
+        switch (order) {
+            case 1:
+                res.append(offset_line(static_cast<Geom::LineSegment const&>(*current), width));
+                break;
+            case 2: {
+                Geom::QuadraticBezier const& q = static_cast<Geom::QuadraticBezier const&>(*current);
+                offset_quadratic(res, q, width, tolerance, levels);
+                break;
+            }
+            case 3: {
+                Geom::CubicBezier const& cb = static_cast<Geom::CubicBezier const&>(*current);
+                offset_cubic(res, cb, width, tolerance, levels);
+                break;
+            }
+            default: {
+                Geom::Path sbasis_path = Geom::cubicbezierpath_from_sbasis(current->toSBasis(), tolerance);
+                for (size_t i = 0; i < sbasis_path.size(); ++i)
+                    offset_curve(res, &sbasis_path[i], width);
+                break;
+            }
+        }
+    } else {
+        Geom::Path sbasis_path = Geom::cubicbezierpath_from_sbasis(current->toSBasis(), 0.1);
+        for (size_t i = 0; i < sbasis_path.size(); ++i)
+            offset_curve(res, &sbasis_path[i], width);
+    }
+}
 
 Geom::PathVector outline(Geom::Path const& input, double width, double miter, LineJoinType join, LineCapType butt)
 {
@@ -1072,7 +1087,7 @@ Geom::Path half_outline(Geom::Path const& input, double width, double miter, Lin
     for (size_t u = 0; u < k; u += 2) {
         temp.clear();
 
-        offset_curve(temp, &input[u], width);
+        Inkscape::offset_curve(temp, &input[u], width);
 
         // on the first run through, there isn't a join
         if (u == 0) {
@@ -1085,7 +1100,7 @@ Geom::Path half_outline(Geom::Path const& input, double width, double miter, Lin
         // odd number of paths
         if (u < k - 1) {
             temp.clear();
-            offset_curve(temp, &input[u+1], width);
+            Inkscape::offset_curve(temp, &input[u+1], width);
             tangents(tang, input[u], input[u+1]);
             outline_join(res, temp, tang[0], tang[1], width, miter, join);
         }
