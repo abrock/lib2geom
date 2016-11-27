@@ -206,6 +206,46 @@ TEST(HalfOutlineTest, knownIssues) {
     }
 }
 
+int findCombinatoricalExplosion(Geom::Path const input, double const width = .5, double const miter = 0) {
+    Geom::Path last_path = input;
+    for (size_t ii = 0; ii < 1000; ++ii) {
+        Geom::Path const result = Inkscape::half_outline(last_path, width, miter);
+        auto stats = symmetricDistanceStats(last_path, result, width, 50);
+        //EXPECT_NEAR(stats.getMin(), 0, 1);
+        //EXPECT_NEAR(stats.getMax(), 0, 1);
+        //std::cout << ii << "\t" << result.size() << std::endl;
+
+        if (result.size() > 100 * input.size()) {
+            return ii;
+        }
+        if (std::abs(stats.getMin()) > 10) {
+            return ii;
+        }
+        if (std::abs(stats.getMax()) > 10) {
+            return ii;
+        }
+        last_path = result;
+    }
+    return -1;
+}
+
+void repeatedOffsetTest(const fs::path& name, const double width = 5, const double miter = 0) {
+    Geom::PathVector const orig_pathvector = read_svgd(name.c_str());
+    ASSERT_EQ(1u, orig_pathvector.size());
+    Geom::Path const orig = orig_pathvector[0];
+
+    std::cout << "File: " << name << std::endl;
+    std::cout << "Forward explosion: " << findCombinatoricalExplosion(orig, width, miter) << std::endl;
+    std::cout << "Reverse explosion: " << findCombinatoricalExplosion(orig.reversed(), width, miter) << std::endl;
+}
+
+TEST(HalfOutlineTest, combinatoricalExplosion) {
+    const auto files = list_files("half-outline-embroidery-paths");
+    for (const auto& file : files) {
+        repeatedOffsetTest(file, .5);
+    }
+}
+
 } // end namespace Geom
 
 /*

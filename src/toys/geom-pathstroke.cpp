@@ -783,7 +783,7 @@ double _offset_cubic_stable_sub(
     // check the tolerance for our estimate to be a parallel curve
 
     double worst_residual = 0;
-    for (size_t ii = 3; ii <= 7; ++ii) {
+    for (size_t ii = 1; ii <= 9; ++ii) {
         const double t = static_cast<double>(ii) / 10;
         const Geom::Point req = bez.pointAt(t);
         const Geom::Point chk = c.pointAt(c.nearestTime(req));
@@ -893,8 +893,8 @@ void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, dou
     // (c) and (bez) differs the most from the desired distance (width).
     double worst_err = std::abs(best_residual);
     double worst_time = .5;
-    /*
-    for (size_t ii = 3; ii <= 7; ++ii) {
+    //*
+    for (size_t ii = 1; ii <= 9; ++ii) {
         const double t = static_cast<double>(ii) / 10;
         const Geom::Point req = bez.pointAt(t);
         // We use the exact solution with nearestTime because it is numerically
@@ -981,8 +981,8 @@ namespace Inkscape {
 
 void offset_curve(Geom::Path& res, Geom::Curve const* current, double width)
 {
-    double const tolerance = std::sqrt(.0025);
-    size_t levels = 2;
+    double const tolerance = 1 * (width/100); // Tolerance is 1.0%
+    size_t levels = 8;
 
     if (current->isDegenerate()) return; // don't do anything
 
