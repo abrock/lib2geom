@@ -1,6 +1,7 @@
 /* Authors:
  *   Liam P. White
  *   Tavmjong Bah
+ *   Alexander Brock
  *
  * Copyright (C) 2014-2015 Authors
  *
@@ -12,6 +13,7 @@
 #include <2geom/sbasis-to-bezier.h> // cubicbezierpath_from_sbasis
 #include <2geom/path-intersection.h>
 #include <2geom/circle.h>
+#include <2geom/svg-path-writer.h>
 
 #include "helper/geom-pathstroke.h"
 
@@ -768,6 +770,14 @@ double _offset_cubic_stable_sub(
         start_off += (width + width_correction) / start_rad;
     if (!Geom::are_near(end_rad, 0))
         end_off += (width + width_correction) / end_rad;
+
+    // We don't change the direction of the control points
+    if (start_off < 0) {
+        start_off = 0;
+    }
+    if (end_off < 0) {
+        end_off = 0;
+    }
     start_off *= start_len;
     end_off *= end_len;
     // --------
@@ -783,7 +793,7 @@ double _offset_cubic_stable_sub(
     // check the tolerance for our estimate to be a parallel curve
 
     double worst_residual = 0;
-    for (size_t ii = 1; ii <= 9; ++ii) {
+    for (size_t ii = 3; ii <= 7; ii+=2) {
         const double t = static_cast<double>(ii) / 10;
         const Geom::Point req = bez.pointAt(t);
         const Geom::Point chk = c.pointAt(c.nearestTime(req));
@@ -794,7 +804,6 @@ double _offset_cubic_stable_sub(
     }
     return worst_residual;
 }
-
 
 void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, double tol, size_t levels)
 {
@@ -865,7 +874,7 @@ void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, dou
             stepsize /= 2;
         }
         if (std::abs(best_width_correction) >= std::abs(width)/2) {
-            //break;
+            //break; // Seems to prevent some numerical instabilities, not clear if useful
         }
     }
 
@@ -893,7 +902,6 @@ void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, dou
     // (c) and (bez) differs the most from the desired distance (width).
     double worst_err = std::abs(best_residual);
     double worst_time = .5;
-    //*
     for (size_t ii = 1; ii <= 9; ++ii) {
         const double t = static_cast<double>(ii) / 10;
         const Geom::Point req = bez.pointAt(t);
@@ -909,7 +917,6 @@ void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, dou
             worst_time = t;
         }
     }
-   // */
 
     if (worst_err < tol) {
         if (Geom::are_near(start_new, p.finalPoint())) {
@@ -975,13 +982,10 @@ void peak_cap(Geom::PathBuilder& res, Geom::Path const& with_dir, Geom::Path con
 
 } // namespace
 
-#include <2geom/svg-path-writer.h>
-
 namespace Inkscape {
 
-void offset_curve(Geom::Path& res, Geom::Curve const* current, double width)
+void offset_curve(Geom::Path& res, Geom::Curve const* current, double width, double tolerance)
 {
-    double const tolerance = 1 * (width/100); // Tolerance is 1.0%
     size_t levels = 8;
 
     if (current->isDegenerate()) return; // don't do anything
@@ -1007,14 +1011,14 @@ void offset_curve(Geom::Path& res, Geom::Curve const* current, double width)
             default: {
                 Geom::Path sbasis_path = Geom::cubicbezierpath_from_sbasis(current->toSBasis(), tolerance);
                 for (size_t i = 0; i < sbasis_path.size(); ++i)
-                    offset_curve(res, &sbasis_path[i], width);
+                    offset_curve(res, &sbasis_path[i], width, tolerance);
                 break;
             }
         }
     } else {
         Geom::Path sbasis_path = Geom::cubicbezierpath_from_sbasis(current->toSBasis(), 0.1);
         for (size_t i = 0; i < sbasis_path.size(); ++i)
-            offset_curve(res, &sbasis_path[i], width);
+            offset_curve(res, &sbasis_path[i], width, tolerance);
     }
 }
 
@@ -1025,9 +1029,6 @@ Geom::PathVector outline(Geom::Path const& input, double width, double miter, Li
     Geom::PathBuilder res;
     Geom::Path with_dir = half_outline(input, width/2., miter, join);
     Geom::Path against_dir = half_outline(input.reversed(), width/2., miter, join);
-    std::cout << "in: " << input.size() << "  out: " << with_dir.size() << " and " << against_dir.size() << std::endl;
-    std::cout << write_svg_path(input) << std::endl
-              << width << std::endl;
 
     res.moveTo(with_dir[0].initialPoint());
     res.append(with_dir);
@@ -1066,8 +1067,23 @@ Geom::PathVector outline(Geom::Path const& input, double width, double miter, Li
     return res.peek();
 }
 
-Geom::Path half_outline(Geom::Path const& input, double width, double miter, LineJoinType join)
+Geom::Path half_outline(Geom::Path const& orig_input, double width, double miter, LineJoinType join)
 {
+    Geom::Path input;
+    for (size_t ii = 0; ii < orig_input.size(); ++ii) {
+        if (!orig_input[ii].isDegenerate()) {
+            input.append(orig_input[ii]);
+        }
+    }
+    if (Geom::are_near(input.initialPoint(), input.finalPoint())) {
+        input.setFinal(input.initialPoint());
+    }
+    if (orig_input.closed()) {
+        input.close();
+    }
+    //std::cout << "Pre-sanitize: " << write_svg_path(orig_input) << std::endl;
+    //std::cout << "Post-sanitize: " << write_svg_path(input) << std::endl;
+    double const tolerance = 5.0 * (width/100); // Tolerance is 5%
     Geom::Path res;
     if (input.size() == 0) return res;
 
@@ -1087,7 +1103,7 @@ Geom::Path half_outline(Geom::Path const& input, double width, double miter, Lin
     for (size_t u = 0; u < k; u += 2) {
         temp.clear();
 
-        Inkscape::offset_curve(temp, &input[u], width);
+        offset_curve(temp, &input[u], width, tolerance);
 
         // on the first run through, there isn't a join
         if (u == 0) {
@@ -1100,11 +1116,13 @@ Geom::Path half_outline(Geom::Path const& input, double width, double miter, Lin
         // odd number of paths
         if (u < k - 1) {
             temp.clear();
-            Inkscape::offset_curve(temp, &input[u+1], width);
+            offset_curve(temp, &input[u+1], width, tolerance);
             tangents(tang, input[u], input[u+1]);
             outline_join(res, temp, tang[0], tang[1], width, miter, join);
         }
     }
+
+    std::cout << "pre-close: " << write_svg_path(res) << std::endl;
 
     if (input.closed()) {
         Geom::Curve const &c1 = res.back();
@@ -1114,13 +1132,23 @@ Geom::Path half_outline(Geom::Path const& input, double width, double miter, Lin
         Geom::Path temp2;
         temp2.append(c2);
         tangents(tang, input.back(), input.front());
+        std::cout << res.size() << std::endl;
+        std::cout << "temp1: " << write_svg_path(temp) << std::endl;
+        std::cout << "temp2: " << write_svg_path(temp2) << std::endl;
+        std::cout << "Tangents: " << tang[0] << ", " << tang[1] << std::endl;
         outline_join(temp, temp2, tang[0], tang[1], width, miter, join);
+        std::cout << "temp: " << write_svg_path(temp) << std::endl;
         res.erase(res.begin());
+        std::cout << res.size() << std::endl;
         res.erase_last();
+        std::cout << res.size() << std::endl;
         //
         res.append(temp);
+        std::cout << res.size() << std::endl;
         res.close();
+        std::cout << res.size() << std::endl;
     }
+    std::cout << "post-close: " << write_svg_path(res) << std::endl;
 
     return res;
 }

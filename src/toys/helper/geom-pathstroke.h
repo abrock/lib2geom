@@ -33,7 +33,7 @@ enum LineCapType {
     BUTT_PEAK, // This is not a line ending supported by the SVG standard.
 };
 
-void offset_curve(Geom::Path& res, Geom::Curve const* current, double width);
+void offset_curve(Geom::Path& res, Geom::Curve const* current, double width, double tolerance);
 
 /**
  * Strokes the path given by @a input.
@@ -62,7 +62,7 @@ Geom::PathVector outline(Geom::Path const& input, double width, double miter, Li
  *
  * @return Offsetted output.
  */
-Geom::Path half_outline(Geom::Path const& input, double width, double miter, LineJoinType join = JOIN_BEVEL);
+Geom::Path half_outline(Geom::Path const& orig_input, double width, double miter, LineJoinType join = JOIN_BEVEL);
 
 /**
  * Builds a join on the provided path.
