@@ -13,7 +13,6 @@
 #include <2geom/sbasis-to-bezier.h> // cubicbezierpath_from_sbasis
 #include <2geom/path-intersection.h>
 #include <2geom/circle.h>
-#include <2geom/svg-path-writer.h>
 
 #include "helper/geom-pathstroke.h"
 
@@ -163,7 +162,7 @@ void miter_join_internal(join_data jd, bool clip)
         Point point_on_path = incoming.finalPoint() + rot90(tang1)*width;
         // SVG defines miter length as distance between inner intersection and outer intersection,
         // which is twice the distance from p to point_on_path but width is half stroke width.
-        satisfied = distance(p, point_on_path) <= miter * width;
+        satisfied = distance(p, point_on_path) <= miter * width; 
         if (satisfied) {
             // miter OK, check to see if we can do a relocation
             if (inc_ls) {
@@ -457,7 +456,7 @@ void extrapolate_join_internal(join_data jd, int alternative)
                         return( miter_clip_join(jd) );
                     }
                     break;
-
+                    
                 }
                 case 2:
                 {
@@ -469,7 +468,7 @@ void extrapolate_join_internal(join_data jd, int alternative)
 
                     if( ( circle2.contains( startPt ) && !circle1.contains( endPt ) ) ||
                         ( circle1.contains( endPt ) && !circle2.contains( startPt ) ) ) {
-
+                        
                         Geom::Point apex = adjust_circles( circle1, circle2, startPt, endPt, tang1, tang2 );
                         points.push_back( ShapeIntersection( 0, 0, apex) );
                         points.push_back( ShapeIntersection( 0, 0, apex) );
@@ -477,7 +476,7 @@ void extrapolate_join_internal(join_data jd, int alternative)
                         // std::cout << "Either both points inside or both outside" << std::endl;
                         return( miter_clip_join(jd) );
                     }
-
+                        
                     break;
                 }
                 case 3:
@@ -540,7 +539,7 @@ void extrapolate_join_internal(join_data jd, int alternative)
 
     // We have a solution, thus sol is defined.
     p1 = sol;
-
+    
     // See if we need to clip. Miter length is measured along a circular arc that is tangent to the
     // bisector of the incoming and out going angles and passes through the end point (sol) of the
     // line join.
@@ -549,7 +548,7 @@ void extrapolate_join_internal(join_data jd, int alternative)
     // a chord connecting the path end point (point_on_path) and the join end point (sol).
     Geom::Point point_on_path = startPt + Geom::rot90(tang1)*width;
     Geom::Line bisector = make_angle_bisector_line(startPt, point_on_path, endPt);
-    Geom::Line ortho = make_orthogonal_line(point_on_path, bisector);
+    Geom::Line ortho = make_orthogonal_line(point_on_path, bisector); 
 
     Geom::LineSegment chord(point_on_path, sol);
     Geom::Line bisector_chord =  make_bisector_line(chord);
@@ -563,7 +562,7 @@ void extrapolate_join_internal(join_data jd, int alternative)
         if (Geom::distance(point_on_path, sol) > miter_limit) {
             clipped = true;
             Geom::Point temp = bisector.versor();
-            Geom::Point limit_point = point_on_path + miter_limit * temp;
+            Geom::Point limit_point = point_on_path + miter_limit * temp; 
             limit_line = make_parallel_line( limit_point, ortho );
         }
     } else {
@@ -614,7 +613,7 @@ void extrapolate_join_internal(join_data jd, int alternative)
                 p2 = Geom::intersection_point(endPt, tang2, limit_line.pointAt(0), limit_line.versor());
             }
         }
-    }
+    }    
 
     // Add initial
     if (arc1) {
@@ -712,7 +711,7 @@ Geom::LineSegment offset_line(Geom::LineSegment const& l, double width)
 
     Geom::Point start = l.initialPoint() + tang1 * width;
     Geom::Point end = l.finalPoint() - tang2 * width;
-
+    
     return Geom::LineSegment(start, end);
 }
 
@@ -1067,22 +1066,8 @@ Geom::PathVector outline(Geom::Path const& input, double width, double miter, Li
     return res.peek();
 }
 
-Geom::Path half_outline(Geom::Path const& orig_input, double width, double miter, LineJoinType join)
+Geom::Path half_outline(Geom::Path const& input, double width, double miter, LineJoinType join)
 {
-    Geom::Path input;
-    for (size_t ii = 0; ii < orig_input.size(); ++ii) {
-        if (!orig_input[ii].isDegenerate()) {
-            input.append(orig_input[ii]);
-        }
-    }
-    if (Geom::are_near(input.initialPoint(), input.finalPoint())) {
-        input.setFinal(input.initialPoint());
-    }
-    if (orig_input.closed()) {
-        input.close();
-    }
-    //std::cout << "Pre-sanitize: " << write_svg_path(orig_input) << std::endl;
-    //std::cout << "Post-sanitize: " << write_svg_path(input) << std::endl;
     double const tolerance = 5.0 * (width/100); // Tolerance is 5%
     Geom::Path res;
     if (input.size() == 0) return res;
@@ -1098,8 +1083,9 @@ Geom::Path half_outline(Geom::Path const& orig_input, double width, double miter
     res.start(start);
 
     // Do two curves at a time for efficiency, since the join function needs to know the outgoing curve as well
-    const size_t k = (input.back_closed().isDegenerate() && input.closed())
-            ?input.size_default()-1:input.size_default();
+    const Geom::Curve &closingline = input.back_closed();
+    const size_t k = (are_near(closingline.initialPoint(), closingline.finalPoint()) && input.closed() )
+            ?input.size_open():input.size_default();
     for (size_t u = 0; u < k; u += 2) {
         temp.clear();
 
@@ -1121,9 +1107,6 @@ Geom::Path half_outline(Geom::Path const& orig_input, double width, double miter
             outline_join(res, temp, tang[0], tang[1], width, miter, join);
         }
     }
-
-    std::cout << "pre-close: " << write_svg_path(res) << std::endl;
-
     if (input.closed()) {
         Geom::Curve const &c1 = res.back();
         Geom::Curve const &c2 = res.front();
@@ -1132,23 +1115,12 @@ Geom::Path half_outline(Geom::Path const& orig_input, double width, double miter
         Geom::Path temp2;
         temp2.append(c2);
         tangents(tang, input.back(), input.front());
-        std::cout << res.size() << std::endl;
-        std::cout << "temp1: " << write_svg_path(temp) << std::endl;
-        std::cout << "temp2: " << write_svg_path(temp2) << std::endl;
-        std::cout << "Tangents: " << tang[0] << ", " << tang[1] << std::endl;
         outline_join(temp, temp2, tang[0], tang[1], width, miter, join);
-        std::cout << "temp: " << write_svg_path(temp) << std::endl;
         res.erase(res.begin());
-        std::cout << res.size() << std::endl;
         res.erase_last();
-        std::cout << res.size() << std::endl;
-        //
         res.append(temp);
-        std::cout << res.size() << std::endl;
         res.close();
-        std::cout << res.size() << std::endl;
     }
-    std::cout << "post-close: " << write_svg_path(res) << std::endl;
 
     return res;
 }
@@ -1157,9 +1129,8 @@ void outline_join(Geom::Path &res, Geom::Path const& temp, Geom::Point in_tang, 
 {
     if (res.size() == 0 || temp.size() == 0)
         return;
-
     Geom::Curve const& outgoing = temp.front();
-    if (Geom::are_near(res.finalPoint(), outgoing.initialPoint())) {
+    if (Geom::are_near(res.finalPoint(), outgoing.initialPoint(), 0.01)) {
         // if the points are /that/ close, just ignore this one
         res.setFinal(temp.initialPoint());
         res.append(temp);

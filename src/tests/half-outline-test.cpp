@@ -377,16 +377,30 @@ TEST(HalfOutlineTest, degeneratePaths) {
             ASSERT_EQ(1, tmp.size());
             auto const path = tmp[0];
             std::cout << "File: " << file << ": " << path.size() << std::endl;
-            std::cout << write_svg_path(path) << std::endl;
+            //std::cout << write_svg_path(path) << std::endl;
+            std::cout << "Forward tests:" << std::endl;
             {
                 Geom::Path result = Inkscape::half_outline(path, width, miter);
-                std::cout << write_svg_path(result) << std::endl;
+                //std::cout << write_svg_path(result) << std::endl;
                 auto stats = symmetricDistanceStats(result, path, width);
                 std::cout << "New: " << result.size() << "\t" << stats.print() << std::endl;
             }
             {
                 Geom::Path result = half_outline_old(path, width, miter);
-                std::cout << write_svg_path(result) << std::endl;
+                //std::cout << write_svg_path(result) << std::endl;
+                auto stats = symmetricDistanceStats(result, path, width);
+                std::cout << "Old: " << result.size() << "\t" << stats.print() << std::endl;
+            }
+            std::cout << "Reversed tests:" << std::endl;
+            {
+                Geom::Path result = Inkscape::half_outline(path.reversed(), width, miter);
+                //std::cout << write_svg_path(result) << std::endl;
+                auto stats = symmetricDistanceStats(result, path, width);
+                std::cout << "New: " << result.size() << "\t" << stats.print() << std::endl;
+            }
+            {
+                Geom::Path result = half_outline_old(path.reversed(), width, miter);
+                //std::cout << write_svg_path(result) << std::endl;
                 auto stats = symmetricDistanceStats(result, path, width);
                 std::cout << "Old: " << result.size() << "\t" << stats.print() << std::endl;
             }
@@ -459,12 +473,13 @@ void
 callback(const size_t iter, void *params,
          const gsl_multifit_nlinear_workspace *w)
 {
+    return;
     gsl_vector *f = gsl_multifit_nlinear_residual(w);
     gsl_vector *x = gsl_multifit_nlinear_position(w);
-    double rcond;
+    double rcond = 1.0;
 
     /* compute reciprocal condition number of J(x) */
-    gsl_multifit_nlinear_rcond(&rcond, w);
+    //gsl_multifit_nlinear_rcond(&rcond, w);
 
     fprintf(stderr, "iter %2zu: A = %.4f, lambda = %.4f, b = %.4f, cond(J) = %8.4f, |f(x)| = %.4f\n",
             iter,
@@ -516,6 +531,7 @@ TEST(GSL, experiment) {
     fdf.params = &d;
 
     /* this is the data to be fitted */
+
     for (i = 0; i < n; i++)
     {
         double t = i;
@@ -525,7 +541,7 @@ TEST(GSL, experiment) {
 
         weights[i] = 1.0 / (si * si);
         y[i] = yi + dy;
-        printf ("data: %zu %g %g\n", i, y[i], si);
+        //printf ("data: %zu %g %g\n", i, y[i], si);
     };
 
     /* allocate workspace with default parameters */
@@ -540,7 +556,7 @@ TEST(GSL, experiment) {
 
     /* solve the system with a maximum of 20 iterations */
     status = gsl_multifit_nlinear_driver(20, xtol, gtol, ftol,
-                                         callback, NULL, &info, w);
+                                         NULL, NULL, &info, w);
 
     /* compute covariance of best fit parameters */
     J = gsl_multifit_nlinear_jac(w);
