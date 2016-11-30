@@ -25,6 +25,8 @@
 
 #include "helper/geom-pathstroke.h"
 
+#include <2geom/jet.h>
+
 namespace Geom {
 
 static Point intersection_point(Point origin_a, Point vector_a, Point origin_b, Point vector_b)
@@ -820,40 +822,205 @@ struct BezierfitGeomDistanceData {
     Geom::Point start, end, dir1, dir2;
 };
 
-int BezierfitGeomDistanceF (
-        const gsl_vector * x,
-        void *data,
-        gsl_vector * f)
+template<class T>
+std::pair<T, T> JetDistanceF(
+        Geom::Point const start,
+        Geom::Point const end,
+        Geom::Point const dir1,
+        Geom::Point const dir2,
+        Geom::Point const target,
+        T const t,
+        T const l1,
+        T const l2,
+        double const width
+        ) {
+
+    /* Calculation of ||bezier(t) - target|| - width */
+    T const c0 = (T(1) - t) * (T(1) - t) * (T(1) - t);
+    T const c1 = T(3) * (T(1) - t) * (T(1) - t) * t;
+    T const c2 = T(3) * (T(1) - t) * t * t;
+    T const c3 = t * t * t;
+
+    T const mid1_x = start.x() + l1 * dir1.x();
+    T const mid1_y = start.y() + l1 * dir1.y();
+
+    T const mid2_x = end.x() + l2 * dir2.x();
+    T const mid2_y = end.y() + l2 * dir2.y();
+
+    T const bez_x =
+            c0 * start.x() +
+            c1 * mid1_x +
+            c2 * mid2_x +
+            c3 * end.x();
+
+    T const bez_y =
+            c0 * start.y() +
+            c1 * mid1_y +
+            c2 * mid2_y +
+            c3 * end.y();
+
+    T const diff_x = bez_x - target.x();
+    T const diff_y = bez_y - target.y();
+
+    T const diff_length = ceres::sqrt(diff_x * diff_x + diff_y * diff_y);
+
+    T const result_diff = diff_length - width;
+
+    /* Calculation of dot(bezier'(t), diff) / (||bezier'(t)|| * ||diff||) */
+    T const d0 = T(3) * (T(1) - t) * (T(1) - t);
+    T const d1 = T(6) * (T(1) - t) * t;
+    T const d2 = T(3) * t * t;
+
+    T const derivative_x =
+            d0 * l1 * dir1.x() +
+            d1 * (mid2_x - mid1_x) -
+            d2 * l2 * dir2.x();
+
+    T const derivative_y =
+            d0 * l1 * dir1.y() +
+            d1 * (mid2_y - mid1_y) -
+            d2 * l2 * dir2.y();
+
+    T const derivative_length = ceres::sqrt(derivative_x * derivative_x + derivative_y * derivative_y);
+
+    T const angle = (derivative_x * diff_x + derivative_y * diff_y) / (derivative_length * diff_length);
+
+    return std::make_pair(result_diff, angle);
+}
+
+int
+BezierfitGeomDistanceF (const gsl_vector * x, void *data,
+                        gsl_vector * f)
 {
-    struct BezierfitGeomDistanceData const * const d = static_cast<struct BezierfitGeomDistanceData *>(data);
+    struct BezierfitGeomDistanceData * d = static_cast<struct BezierfitGeomDistanceData *>(data);
     size_t const n = d->n;
 
     double const l1 = gsl_vector_get (x, 0);
     double const l2 = gsl_vector_get (x, 1);
-    Geom::CubicBezier const curve(d->start, d->start + l1 * d->dir1, d->end + l2 * d->dir2, d->end);
-
     size_t ii;
     for (ii = 0; ii < n; ii++)
     {
         double t = gsl_vector_get(x, 2 + ii);
-        /*
         if (t < 0) {
             t = 0;
         }
         else if (t > 1) {
             t = 1;
         }
-        // */
 
+        /*
         std::vector<Geom::Point> f_t = curve.pointAndDerivatives(t, 1);
 
-        Geom::Point const diff_t = f_t[0] - d->target[ii];
+        Geom::Point diff_t = f_t[0] - d->target[ii];
+        double const residual_diff = diff_t.length() - d->width;
 
-        gsl_vector_set(f, 2*ii, diff_t.length() - d->width);
-        //gsl_vector_set(f, 2*ii, Geom::dot(diff_t, diff_t) - d->width * d->width);
+        //double const angle = Geom::dot(f_t[1], diff_t);
+        double const angle = Geom::dot(f_t[1], diff_t) / (f_t[1].length() * diff_t.length());
+        // */
 
-        gsl_vector_set(f, 2*ii+1, Geom::dot(f_t[1], diff_t) / (f_t[1].length() * diff_t.length()));
-        //gsl_vector_set(f, 2*ii+1, Geom::dot(f_t[1], diff_t));
+        auto const result = JetDistanceF(
+                    d->start,
+                    d->end,
+                    d->dir1,
+                    d->dir2,
+                    d->target[ii],
+                    t,
+                    l1,
+                    l2,
+                    d->width
+                    );
+
+        double residual_diff = result.first;
+        double angle = result.second;
+
+        gsl_vector_set(f, 2*ii, residual_diff);
+        gsl_vector_set(f, 2*ii+1, angle);
+    }
+
+    return GSL_SUCCESS;
+}
+
+int BezierfitGeomDistanceDF (const gsl_vector * x, void *data,
+                         gsl_matrix * J)
+{
+    struct BezierfitGeomDistanceData * d = static_cast<struct BezierfitGeomDistanceData *>(data);
+    size_t const n = d->n;
+
+    double const l1 = gsl_vector_get (x, 0);
+    double const l2 = gsl_vector_get (x, 1);
+    size_t ii;
+    gsl_matrix_set_zero(J);
+    for (ii = 0; ii < n; ii++)
+    {
+        /* Model Yi = A * exp(-lambda * i) + b */
+        /*
+        double t = i;
+        double Yi = A * exp (-lambda * t) + b;
+        gsl_vector_set (f, i, Yi - y[i]);
+        */
+        double t = gsl_vector_get(x, 2 + ii);
+        if (t < 0) {
+            t = 0;
+        }
+        else if (t > 1) {
+            t = 1;
+        }
+
+        {
+            ceres::Jet<> j_l1(l1, 1.);
+            ceres::Jet<> j_l2(l2, 0.);
+            ceres::Jet<> j_t(t, 0.);
+            auto const result = JetDistanceF(
+                        d->start,
+                        d->end,
+                        d->dir1,
+                        d->dir2,
+                        d->target[ii],
+                        j_t,
+                        j_l1,
+                        j_l2,
+                        d->width
+                        );
+            gsl_matrix_set (J, 2 * ii, 0, result.first.v);
+            gsl_matrix_set (J, 2 * ii+1, 0, result.second.v);
+        }
+        {
+            ceres::Jet<> j_l1(l1, 0.);
+            ceres::Jet<> j_l2(l2, 1.);
+            ceres::Jet<> j_t(t, 0.);
+            auto const result = JetDistanceF(
+                        d->start,
+                        d->end,
+                        d->dir1,
+                        d->dir2,
+                        d->target[ii],
+                        j_t,
+                        j_l1,
+                        j_l2,
+                        d->width
+                        );
+            gsl_matrix_set (J, 2 * ii, 1, result.first.v);
+            gsl_matrix_set (J, 2 * ii+1, 1, result.second.v);
+        }
+        {
+            ceres::Jet<> j_l1(l1, 0.);
+            ceres::Jet<> j_l2(l2, 0.);
+            ceres::Jet<> j_t(t, 1.);
+            auto const result = JetDistanceF(
+                        d->start,
+                        d->end,
+                        d->dir1,
+                        d->dir2,
+                        d->target[ii],
+                        j_t,
+                        j_l1,
+                        j_l2,
+                        d->width
+                        );
+            gsl_matrix_set (J, 2 * ii, 2+ii, result.first.v);
+            gsl_matrix_set (J, 2 * ii+1, 2+ii, result.second.v);
+        }
+
     }
 
     return GSL_SUCCESS;
@@ -871,11 +1038,12 @@ std::pair<double, double> fitDistance(Geom::CubicBezier& c,
     Geom::Point dir1 = c.controlPoint(1) - start;
     Geom::Point dir2 = c.controlPoint(2) - end;
 
-    const gsl_multifit_nlinear_type *T = gsl_multifit_nlinear_trust;
+    const gsl_multifit_nlinear_type *solver_type = gsl_multifit_nlinear_trust;
     gsl_multifit_nlinear_workspace *workspace;
     gsl_multifit_nlinear_fdf fdf;
     gsl_multifit_nlinear_parameters fdf_params =
             gsl_multifit_nlinear_default_parameters();
+
     const size_t num_points = orig_target.size();
     const size_t num_conditions = 2 * num_points;
     const size_t num_params = 2 + num_points;
@@ -919,14 +1087,14 @@ std::pair<double, double> fitDistance(Geom::CubicBezier& c,
 
     /* define the function to be minimized */
     fdf.f = BezierfitGeomDistanceF;
-    fdf.df = NULL;   /* set to NULL for finite-difference Jacobian */
+    fdf.df = BezierfitGeomDistanceDF;   /* set to NULL for finite-difference Jacobian */
     fdf.fvv = NULL;     /* not using geodesic acceleration */
     fdf.n = num_conditions;
     fdf.p = num_params;
     fdf.params = &d;
 
     /* allocate workspace with default parameters */
-    workspace = gsl_multifit_nlinear_alloc (T, &fdf_params, num_conditions, num_params);
+    workspace = gsl_multifit_nlinear_alloc (solver_type, &fdf_params, num_conditions, num_params);
 
     /* initialize solver with starting point and weights */
     //gsl_multifit_nlinear_winit (&x.vector, &wts.vector, &fdf, w);
@@ -1087,9 +1255,6 @@ void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, dou
     double start_len, end_len; // tangent lengths
     get_cubic_data(bez, 0, start_len, start_rad);
     get_cubic_data(bez, 1, end_len, end_rad);
-
-
-    Geom::CubicBezier c;
 
     double best_width_correction = 0;
     double best_residual = _offset_cubic_stable_sub(
