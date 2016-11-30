@@ -52,6 +52,8 @@
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_multifit_nlinear.h>
 
+#include <2geom/jet.h>
+
 /* number of data points to fit */
 #define N 40
 
@@ -133,7 +135,7 @@ callback(const size_t iter, void *params,
             gsl_blas_dnrm2(f));
 }
 
-#if 0
+#if 1
 TEST(GSL, experiment) {
 
     std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
@@ -199,9 +201,9 @@ TEST(GSL, experiment) {
     f = gsl_multifit_nlinear_residual(w);
     gsl_blas_ddot(f, f, &chisq0);
 
-    /* solve the system with a maximum of 20 iterations */
-    status = gsl_multifit_nlinear_driver(20, xtol, gtol, ftol,
-                                         NULL, NULL, &info, w);
+    /* solve the system with a maximum of 200 iterations */
+    status = gsl_multifit_nlinear_driver(200, xtol, gtol, ftol,
+                                         callback, NULL, &info, w);
 
     /* compute covariance of best fit parameters */
     J = gsl_multifit_nlinear_jac(w);
@@ -297,7 +299,7 @@ bezierfit_f (const gsl_vector * x, void *data,
                 + c1 * (d->start_x + l1 * d->mid1_x)
                 + c2 * (d->end_x + l2 * d->mid2_x)
                 + c3 * d->end_x;
-                //*/
+        //*/
         //double dx_t = -d->x[ii] + evaluateBezier(t, d->start_x, d->end_x, d->mid1_x, d->mid2_x, l1, l2);
         gsl_vector_set(f, 2*ii, dx_t);
 
@@ -463,7 +465,7 @@ struct bezierfit_geom_data {
 
 int
 bezierfit_geom_f (const gsl_vector * x, void *data,
-             gsl_vector * f)
+                  gsl_vector * f)
 {
     struct bezierfit_geom_data * d = static_cast<struct bezierfit_geom_data *>(data);
     size_t n = d->n;
@@ -632,9 +634,25 @@ struct BezierfitGeomDistanceData {
     Geom::Point start, end, dir1, dir2;
 };
 
+template<class T>
+std::pair<T, T> JetDistanceF(
+        Geom::Point const start,
+        Geom::Point const end,
+        Geom::Point const dir1,
+        Geom::Point const dir2,
+        T const t,
+        T const l1,
+        T const l2
+        ) {
+
+
+
+    return std::make_pair(T(), T());
+}
+
 int
 BezierfitGeomDistanceF (const gsl_vector * x, void *data,
-             gsl_vector * f)
+                        gsl_vector * f)
 {
     struct BezierfitGeomDistanceData * d = static_cast<struct BezierfitGeomDistanceData *>(data);
     size_t const n = d->n;
@@ -665,15 +683,61 @@ BezierfitGeomDistanceF (const gsl_vector * x, void *data,
         Geom::Point diff_t = f_t[0] - d->target[ii];
 
         gsl_vector_set(f, 2*ii, diff_t.length() - d->width);
+        //gsl_vector_set(f, 2*ii, Geom::dot(diff_t, diff_t) - d->width * d->width);
 
-        double const angle = Geom::dot(f_t[1], diff_t) / (f_t[1].length() * diff_t.length());
+        //double const angle = Geom::dot(f_t[1], diff_t) / (f_t[1].length() * diff_t.length());
+        double const angle = Geom::dot(f_t[1], diff_t);
         gsl_vector_set(f, 2*ii+1, angle);
     }
 
     return GSL_SUCCESS;
 }
 
-#define GSL_DBG_MSG 0
+
+int
+BezierfitGeomDistanceDF (const gsl_vector * x, void *data,
+                         gsl_vector * f)
+{
+    struct BezierfitGeomDistanceData * d = static_cast<struct BezierfitGeomDistanceData *>(data);
+    size_t const n = d->n;
+
+    double const l1 = gsl_vector_get (x, 0);
+    double const l2 = gsl_vector_get (x, 1);
+    Geom::CubicBezier const curve(d->start, d->start + l1 * d->dir1, d->end + l2 * d->dir2, d->end);
+
+    size_t ii;
+    for (ii = 0; ii < n; ii++)
+    {
+        /* Model Yi = A * exp(-lambda * i) + b */
+        /*
+        double t = i;
+        double Yi = A * exp (-lambda * t) + b;
+        gsl_vector_set (f, i, Yi - y[i]);
+        */
+        double t = gsl_vector_get(x, 2 + ii);
+        if (t < 0) {
+            t = 0;
+        }
+        else if (t > 1) {
+            t = 1;
+        }
+
+        std::vector<Geom::Point> f_t = curve.pointAndDerivatives(t, 1);
+
+        Geom::Point diff_t = f_t[0] - d->target[ii];
+
+        gsl_vector_set(f, 2*ii, diff_t.length() - d->width);
+        //gsl_vector_set(f, 2*ii, Geom::dot(diff_t, diff_t) - d->width * d->width);
+
+        //double const angle = Geom::dot(f_t[1], diff_t) / (f_t[1].length() * diff_t.length());
+        double const angle = Geom::dot(f_t[1], diff_t);
+        gsl_vector_set(f, 2*ii+1, angle);
+    }
+
+    return GSL_SUCCESS;
+}
+
+#define GSL_DBG_MSG 1
 
 TEST(GSL, bezierGeomDistanceExperiment) {
 
@@ -814,6 +878,71 @@ TEST(GSL, bezierGeomDistanceExperiment) {
 
     std::cout << "GSL time: " << time << " (" << 1.0/time << "/s)" << std::endl;
 
+}
+
+template<class T>
+T f(T const& x) {
+    return 1./3. * x*x*x + 1./2. * x*x + x + T(1) + ceres::exp(x);
+}
+
+double f_x(double const x) {
+    return x*x + x + 1 + std::exp(x);
+}
+
+
+
+#define JET_THRESHOLD 1e-9
+TEST(Ceres, Jet) {
+
+
+    for (double x = -2; x <= 2; x += .0001) {
+        ceres::Jet<> jet_x(x, 1);
+        auto jet_result = f(jet_x);
+        auto double_result = f(x);
+        EXPECT_NEAR(jet_result.a, double_result, JET_THRESHOLD);
+        double manual_derivative = f_x(x);
+        EXPECT_NEAR(manual_derivative, jet_result.v, JET_THRESHOLD);
+    }
+}
+
+template<class T>
+T f2(T const& x, T const& y) {
+    return .5*x*x + y*y + x*y + 2.*x + y + 1.;
+}
+
+double f2_x(double const x, double const y) {
+    return x + y + 2;
+}
+
+double f2_y(double const x, double const y) {
+    return 2*y + x + 1;
+}
+
+TEST(Ceres, Jet2D) {
+
+
+    for (double x = -2; x <= 2; x += .01) {
+        for (double y = -2; y <= 2; y += .01) {
+            {
+                ceres::Jet<> jet_x(x, 1);
+                ceres::Jet<> jet_y(y, 0);
+                auto jet_result = f2(jet_x, jet_y);
+                auto double_result = f2(x,y);
+                EXPECT_NEAR(jet_result.a, double_result, JET_THRESHOLD);
+                double manual_derivative = f2_x(x, y);
+                EXPECT_NEAR(manual_derivative, jet_result.v, JET_THRESHOLD);
+            }
+            {
+                ceres::Jet<> jet_x(x, 0);
+                ceres::Jet<> jet_y(y, 1);
+                auto jet_result = f2(jet_x, jet_y);
+                auto double_result = f2(x,y);
+                EXPECT_NEAR(jet_result.a, double_result, JET_THRESHOLD);
+                double manual_derivative = f2_y(x, y);
+                EXPECT_NEAR(manual_derivative, jet_result.v, JET_THRESHOLD);
+            }
+        }
+    }
 }
 
 /*
