@@ -113,7 +113,12 @@ void offset_cubic_old(Geom::Path& p, Geom::CubicBezier const& bez, double width,
         }
 
         // we're good, curve is accurate enough
-        p.append(c);
+        try {
+          p.append(c);}
+        catch (...) {
+
+        }
+
         return;
     } else {
         // split the curve in two

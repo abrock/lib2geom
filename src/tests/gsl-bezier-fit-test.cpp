@@ -625,7 +625,7 @@ TEST(GSL, bezierGeomExperiment) {
 
 }
 
-struct bezierfit_geom_distance_data {
+struct BezierfitGeomDistanceData {
     size_t n;
     double width;
     Geom::Point * target;
@@ -633,10 +633,10 @@ struct bezierfit_geom_distance_data {
 };
 
 int
-bezierfit_geom_distance_f (const gsl_vector * x, void *data,
+BezierfitGeomDistanceF (const gsl_vector * x, void *data,
              gsl_vector * f)
 {
-    struct bezierfit_geom_distance_data * d = static_cast<struct bezierfit_geom_distance_data *>(data);
+    struct BezierfitGeomDistanceData * d = static_cast<struct BezierfitGeomDistanceData *>(data);
     size_t const n = d->n;
 
     double const l1 = gsl_vector_get (x, 0);
@@ -673,6 +673,8 @@ bezierfit_geom_distance_f (const gsl_vector * x, void *data,
     return GSL_SUCCESS;
 }
 
+#define GSL_DBG_MSG 0
+
 TEST(GSL, bezierGeomDistanceExperiment) {
 
     std::chrono::high_resolution_clock::time_point start_t = std::chrono::high_resolution_clock::now();
@@ -692,7 +694,7 @@ TEST(GSL, bezierGeomDistanceExperiment) {
     gsl_multifit_nlinear_fdf fdf;
     gsl_multifit_nlinear_parameters fdf_params =
             gsl_multifit_nlinear_default_parameters();
-    const size_t num_points = 5;
+    const size_t num_points = 3;
     const size_t num_conditions = 2 * num_points;
     const size_t num_params = 2 + num_points;
 
@@ -711,17 +713,19 @@ TEST(GSL, bezierGeomDistanceExperiment) {
         weights[2 * ii] = 1;
         weights[2 * ii + 1] = 1;
         target[ii] = orig.pointAt(t);
+#if GSL_DBG_MSG
         printf ("data: %zu %g %g\n", ii, target[ii].x(), target[ii].y());
+#endif
     };
 
 
 
-    struct bezierfit_geom_distance_data d = { num_points, width, target, offset_start, offset_end, dir1, dir2};
+    struct BezierfitGeomDistanceData d = { num_points, width, target, offset_start, offset_end, dir1, dir2};
     double param_init[num_params];
     param_init[0] = 1;
     param_init[1] = 1;
     for (size_t ii = 0; ii < num_points; ++ii) {
-        param_init[ii+2] = .5;
+        param_init[ii+2] = static_cast<double>(ii+1) / (num_points +2);
     }
     gsl_vector_view x = gsl_vector_view_array (param_init, num_params);
     gsl_vector_view wts = gsl_vector_view_array(weights, num_conditions);
@@ -730,15 +734,15 @@ TEST(GSL, bezierGeomDistanceExperiment) {
     int status, info;
 
 
-    const double xtol = 1e-8;
-    const double gtol = 1e-8;
+    const double xtol = 1e-4;
+    const double gtol = 1e-4;
     const double ftol = 0.0;
 
     gsl_rng_env_setup();
     r = gsl_rng_alloc(gsl_rng_default);
 
     /* define the function to be minimized */
-    fdf.f = bezierfit_geom_distance_f;
+    fdf.f = BezierfitGeomDistanceF;
     fdf.df = NULL;   /* set to NULL for finite-difference Jacobian */
     fdf.fvv = NULL;     /* not using geodesic acceleration */
     fdf.n = num_conditions;
@@ -753,14 +757,18 @@ TEST(GSL, bezierGeomDistanceExperiment) {
     /* initialize solver with starting point and weights */
     gsl_multifit_nlinear_winit (&x.vector, &wts.vector, &fdf, w);
 
+#if GSL_DBG_MSG
     /* compute initial cost function */
     f = gsl_multifit_nlinear_residual(w);
     gsl_blas_ddot(f, f, &chisq0);
+#endif
 
     /* solve the system with a maximum of 30 iterations */
     status = gsl_multifit_nlinear_driver(30, xtol, gtol, ftol,
                                          NULL, NULL, &info, w);
 
+
+#if GSL_DBG_MSG
     /* compute covariance of best fit parameters */
     J = gsl_multifit_nlinear_jac(w);
     gsl_multifit_nlinear_covar (J, 0.0, covar);
@@ -770,7 +778,6 @@ TEST(GSL, bezierGeomDistanceExperiment) {
 
 #define FIT(i) gsl_vector_get(w->x, i)
 #define ERR(i) std::sqrt(gsl_matrix_get(covar,i,i))
-
     fprintf(stderr, "summary from method '%s/%s'\n",
             gsl_multifit_nlinear_name(w),
             gsl_multifit_nlinear_trs_name(w));
@@ -797,7 +804,7 @@ TEST(GSL, bezierGeomDistanceExperiment) {
     }
 
     fprintf (stderr, "status = %s\n", gsl_strerror (status));
-
+#endif
     gsl_multifit_nlinear_free (w);
     gsl_matrix_free (covar);
     gsl_rng_free (r);
