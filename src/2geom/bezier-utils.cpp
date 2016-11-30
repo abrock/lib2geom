@@ -49,9 +49,360 @@
 
 #include <2geom/bezier-utils.h>
 #include <2geom/math-utils.h>
+#include <2geom/bezier.h>
+#include <2geom/bezier-curve.h>
 #include <assert.h>
 
+#include <stdlib.h>
+#include <stdio.h>
+#include <gsl/gsl_rng.h>
+#include <gsl/gsl_randist.h>
+#include <gsl/gsl_matrix.h>
+#include <gsl/gsl_vector.h>
+#include <gsl/gsl_blas.h>
+#include <gsl/gsl_multifit_nlinear.h>
+
+#include <2geom/jet.h>
+
+
+/**
+ * @brief The BezierfitGeomDistanceData struct holds the data necessary for fitting a Bezier curve
+ * to
+ */
+struct BezierfitData {
+    /**
+     * @brief n Number of target points for fit
+     */
+    size_t n;
+    /**
+     * @brief target Array of target points.
+     */
+    Geom::Point const * target;
+    /**
+     * @brief start Start point of the fitted Bezier.
+     */
+    Geom::Point start;
+    /**
+     * @brief end End point of the fitted Bezier.
+     */
+    Geom::Point end;
+};
+
+template<class T>
+std::pair<T, T> bezier_distance(
+        Geom::Point const start,
+        Geom::Point const end,
+        T const mid1_x,
+        T const mid1_y,
+        T const mid2_x,
+        T const mid2_y,
+        T const t,
+        Geom::Point const target
+        ) {
+
+    /* Calculation of ||bezier(t) - target|| - width */
+    T const c0 = (T(1) - t) * (T(1) - t) * (T(1) - t);
+    T const c1 = T(3) * (T(1) - t) * (T(1) - t) * t;
+    T const c2 = T(3) * (T(1) - t) * t * t;
+    T const c3 = t * t * t;
+
+    T const bez_x =
+            c0 * T(start.x()) +
+            c1 * T(mid1_x) +
+            c2 * T(mid2_x) +
+            c3 * T(end.x());
+
+    T const bez_y =
+            c0 * T(start.y()) +
+            c1 * T(mid1_y) +
+            c2 * T(mid2_y) +
+            c3 * T(end.y());
+
+    return std::make_pair(bez_x - T(target.x()), bez_y - T(target.y()));
+}
+
+/**
+ * @brief BezierfitGeomDistanceF Calculate residuals for GSL nonlinear least squares solver.
+ * The target objective is to fit a bezier curve s.t. it has constant distance to a given bezier curve.
+ * @param[in] x Input data (l1, l2, time points t_i) (adjusted by GSL for each iteration)
+ * @param[in] data Constant curve-fitting data: @see BezierfitGeomDistanceData
+ * @param[out] f Computed residuals
+ * @return
+ */
+int bezierfit_f (
+        const gsl_vector * x,
+        void *data,
+        gsl_vector * f)
+{
+    struct BezierfitData * d = static_cast<struct BezierfitData *>(data);
+    size_t const n = d->n;
+
+    double const mid1_x = gsl_vector_get (x, 0);
+    double const mid1_y = gsl_vector_get (x, 1);
+    double const mid2_x = gsl_vector_get (x, 2);
+    double const mid2_y = gsl_vector_get (x, 3);
+
+    // If the t_ii are not in the range [0,1], abort.
+    for (size_t ii = 0; ii < n; ii++) {
+        double const t = gsl_vector_get(x, 4 + ii);
+        if (t < -.1 || t > 1.1) {
+            std::cout << "failed at #" << ii << " with t_ii=" << t << std::endl;
+            return GSL_EDOM;
+        }
+    }
+    for (size_t ii = 0; ii < n; ii++) {
+        double const t = gsl_vector_get(x, 4 + ii);
+        auto const result = bezier_distance(
+                    d->start,
+                    d->end,
+                    mid1_x,
+                    mid1_y,
+                    mid2_x,
+                    mid2_y,
+                    t,
+                    d->target[ii]
+                    );
+        gsl_vector_set(f, 2*ii, result.first);
+        gsl_vector_set(f, 2*ii+1, result.second);
+    }
+    return GSL_SUCCESS;
+}
+
+/**
+ * @brief BezierfitGeomDistanceDF Calculate derivatives of residuals for GSL nonlinear least squares solver.
+ * The target objective is to fit a bezier curve s.t. it has constant distance to a given bezier curve.
+ * @see BezierfitGeomDistanceF, @see JetDistanceF
+ * @param[in] x Input data (l1, l2, time points t_i) (adjusted by GSL for each iteration)
+ * @param[in] data Constant curve-fitting data: @see BezierfitGeomDistanceData
+ * @param[out] f Computed residuals
+ * @return
+ */
+int bezierfit_df (
+        const gsl_vector * x,
+        void *data,
+        gsl_matrix * J)
+{
+    struct BezierfitData * d = static_cast<struct BezierfitData *>(data);
+    size_t const n = d->n;
+
+    ceres::Jet<> jets_const[4];
+    ceres::Jet<> jets_diff[4];
+
+    for (size_t ii = 0; ii < 4; ++ii) {
+        jets_const[ii] = ceres::Jet<>(gsl_vector_get (x, ii), 0.);
+        jets_diff[ii]  = ceres::Jet<>(gsl_vector_get (x, ii), 1.);
+    }
+
+    gsl_matrix_set_zero(J);
+    for (size_t ii = 0; ii < n; ii++) {
+        double t = gsl_vector_get(x, 4 + ii);
+        if (t < 0) {
+            t = 0;
+        }
+        else if (t > 1) {
+            t = 1;
+        }
+        ceres::Jet<> jet_t(t, 0.);
+        for (size_t jj = 0; jj < 4; ++jj) {
+            auto const result = bezier_distance(
+                        d->start,
+                        d->end,
+                        (0 == jj) ? jets_diff[0] : jets_const[0],
+                        (1 == jj) ? jets_diff[1] : jets_const[1],
+                        (2 == jj) ? jets_diff[2] : jets_const[2],
+                        (3 == jj) ? jets_diff[3] : jets_const[3],
+                        jet_t,
+                        d->target[ii]
+                        );
+            gsl_matrix_set(J, 2*ii, jj, result.first.v);
+            gsl_matrix_set(J, 2*ii+1, jj, result.second.v);
+            //std::cout << "(" << result.first.v << ", " << result.second.v << ") ";
+        }
+        ceres::Jet<> jet_t_diff(t, 1.);
+        auto const result = bezier_distance(
+                    d->start,
+                    d->end,
+                    jets_const[0],
+                    jets_const[1],
+                    jets_const[2],
+                    jets_const[3],
+                    jet_t_diff,
+                    d->target[ii]
+                    );
+        gsl_matrix_set(J, 2*ii, 4+ii, result.first.v);
+        gsl_matrix_set(J, 2*ii+1, 4+ii, result.second.v);
+        //std::cout << "(" << result.first.v << ", " << result.second.v << ") ";
+        //std::cout << std::endl;
+    }
+    return GSL_SUCCESS;
+}
+
+void
+callback_bezier_fit(const size_t iter, void *params,
+         const gsl_multifit_nlinear_workspace *w)
+{
+  gsl_vector *f = gsl_multifit_nlinear_residual(w);
+  gsl_vector *x = gsl_multifit_nlinear_position(w);
+  double rcond;
+
+  /* compute reciprocal condition number of J(x) */
+  gsl_multifit_nlinear_rcond(&rcond, w);
+
+  fprintf(stderr, "iter %2zu: p1_x = %.4f, p1_y = %.4f, p2_x = %.4f, p2_y = %.4f, cond(J) = %8.4f, |f(x)| = %.4f\n",
+          iter,
+          gsl_vector_get(x, 0),
+          gsl_vector_get(x, 1),
+          gsl_vector_get(x, 2),
+          gsl_vector_get(x, 3),
+          1.0 / rcond,
+          gsl_blas_dnrm2(f));
+  gsl_matrix * auto_J = gsl_matrix_alloc (w->J->size1, w->J->size2);
+  bezierfit_df (
+          x,
+          w->fdf->params,
+          auto_J);
+  /*
+  std::cout << "Matrix diff:" << std::endl;
+  for (size_t ii = 0; ii < w->J->size1; ++ii) {
+      for (size_t jj = 0; jj < w->J->size2; ++jj) {
+          std::cout << gsl_matrix_get(w->J, ii, jj) - gsl_matrix_get(auto_J, ii, jj) << ", ";
+      }
+      std::cout << std::endl;
+  }
+  */
+
+
+}
+
 namespace Geom {
+
+
+std::pair<double, double> fit_bezier(Geom::CubicBezier& c, std::vector<Geom::Point> const& data) {
+    std::pair<double, double> result(0,0);
+    if (data.empty()) {
+        return result;
+    }
+    c.setPoint(0, data.front());
+    if (data.size() == 1) {
+        c.setPoint(1, data.front());
+        c.setPoint(2, data.front());
+        c.setPoint(3, data.front());
+        return result;
+    }
+    c.setPoint(3, data.back());
+    if (data.size() == 2) {
+        c.setPoint(1, (2*data.front() + data.back())/3);
+        c.setPoint(2, (data.front() + 2*data.back())/3);
+        return result;
+    }
+    if (data.size() == 3) {
+        c.setPoint(1, data[1]);
+        c.setPoint(2, data[1]);
+        return result;
+    }
+    if (data.size() == 4) {
+        c.setPoint(1, data[1]);
+        c.setPoint(2, data[2]);
+        return result;
+    }
+
+    c.setPoint(1, (2*data.front() + data.back())/3);
+    c.setPoint(2, (data.front() + 2*data.back())/3);
+
+    const gsl_multifit_nlinear_type *solver_type = gsl_multifit_nlinear_trust;
+    gsl_multifit_nlinear_workspace *workspace;
+    gsl_multifit_nlinear_fdf fdf;
+    gsl_multifit_nlinear_parameters fdf_params =
+            gsl_multifit_nlinear_default_parameters();
+
+    /**
+     * @brief num_points Number of target points to which the bezier c is fitted
+     */
+    const size_t num_points = data.size();
+    /**
+     * @brief num_conditions Number of residuals.
+     * For each point we have a x residual and y residual.
+     */
+    const size_t num_residuals = 2 * num_points;
+    /**
+     * @brief num_params Number of free parameters.
+     * We have for each target point one parameter t_i (the time on c for which the curve is closest).
+     * Furthermore we have the two middle control points.
+     */
+    const size_t num_params = 4 + num_points;
+
+    struct BezierfitData bezierfit_data = {
+        num_points,
+                data.data(),
+                c.initialPoint(),
+                c.finalPoint()
+    };
+    double param_init[num_params];
+    param_init[0] = c.controlPoint(1).x();
+    param_init[1] = c.controlPoint(1).y();
+    param_init[2] = c.controlPoint(2).x();
+    param_init[3] = c.controlPoint(2).y();
+
+    double initial_t[num_points];
+    initial_t[0] = 0;
+    for (size_t ii = 1; ii < num_points; ++ii) {
+        initial_t[ii] = initial_t[ii-1] + Geom::distance(data[ii], data[ii-1]);
+    }
+    for (size_t ii = 1; ii < num_points; ++ii) {
+        initial_t[ii] /= initial_t[num_points-1];
+    }
+    for (size_t ii = 0; ii < num_points; ++ii) {
+        param_init[ii+4] = initial_t[ii];
+    }
+    gsl_vector_view x = gsl_vector_view_array (param_init, num_params);
+
+    int status, info;
+
+
+    const double xtol = 1e-8;
+    const double gtol = 1e-8;
+    const double ftol = 1e-8;
+
+    /* define the function to be minimized */
+    fdf.f = bezierfit_f;
+    fdf.df = bezierfit_df;   /* set to NULL for finite-difference Jacobian */
+    //fdf.df = NULL;   /* set to NULL for finite-difference Jacobian */
+    fdf.fvv = NULL;     /* not using geodesic acceleration */
+    fdf.n = num_residuals;
+    fdf.p = num_params;
+    fdf.params = &bezierfit_data;
+
+    /* allocate workspace with default parameters */
+    workspace = gsl_multifit_nlinear_alloc (solver_type, &fdf_params, num_residuals, num_params);
+
+    /* initialize solver with starting point and weights */
+    //gsl_multifit_nlinear_winit (&x.vector, &wts.vector, &fdf, w);
+    gsl_multifit_nlinear_init (&x.vector, &fdf, workspace);
+
+    /* solve the system with a maximum of 5 iterations */
+    status = gsl_multifit_nlinear_driver(5, xtol, gtol, ftol,
+                                         NULL, NULL, &info, workspace);
+
+    c.setPoint(1, Geom::Point(gsl_vector_get(workspace->x, 0), gsl_vector_get(workspace->x, 1)));
+    c.setPoint(2, Geom::Point(gsl_vector_get(workspace->x, 2), gsl_vector_get(workspace->x, 3)));
+
+    double worst_error = 0;
+    double worst_time = 0.5;
+    for (size_t ii = 0; ii < num_points; ++ii) {
+        double const current_error = std::sqrt(
+                    gsl_vector_get(workspace->f, 2*ii) * gsl_vector_get(workspace->f, 2*ii) +
+                    gsl_vector_get(workspace->f, 2*ii+1) * gsl_vector_get(workspace->f, 2*ii+1)
+                    );
+        if (worst_error < current_error) {
+            worst_error = current_error;
+            worst_time = gsl_vector_get(workspace->x, 2 + ii);
+        }
+    }
+
+    gsl_multifit_nlinear_free (workspace);
+
+    return std::make_pair(worst_error, worst_time);
+}
 
 /* Forward declarations */
 static void generate_bezier(Point b[], Point const d[], double const u[], unsigned len,
@@ -244,7 +595,7 @@ bezier_fit_cubic_full(Point bezier[], int split_points[],
         reparameterize(data, len, u, bezier);
 
         /* Find max deviation of points to fitted curve. */
-        double const tolerance = sqrt(error + 1e-9);
+        double const tolerance = std::sqrt(error + 1e-9);
         double maxErrorRatio = compute_max_error_ratio(data, u, len, bezier, tolerance, &splitPoint);
 
         if ( fabs(maxErrorRatio) <= 1.0 ) {
@@ -929,7 +1280,7 @@ compute_max_error_ratio(Point const d[], double const u[], unsigned const len,
         prev = curr;
     }
 
-    double const dist_ratio = sqrt(maxDistsq) / tolerance;
+    double const dist_ratio = std::sqrt(maxDistsq) / tolerance;
     double ret;
     if (max_hook_ratio <= dist_ratio) {
         ret = dist_ratio;

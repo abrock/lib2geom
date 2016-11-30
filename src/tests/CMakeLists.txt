@@ -33,6 +33,7 @@ rect-test
 sbasis-test
 half-outline-test
 gsl-bezier-fit-test
+bezier-fit-test
 )
 
 file(COPY "half-outline-difficult-paths" DESTINATION ".")
@@ -61,4 +62,8 @@ target_link_libraries(half-outline-test geom-pathstroke 2geom)
 target_link_libraries(gsl-bezier-fit-test RunningStats)
 target_link_libraries(gsl-bezier-fit-test ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY})
 target_link_libraries(gsl-bezier-fit-test geom-pathstroke 2geom)
+
+target_link_libraries(bezier-fit-test RunningStats)
+target_link_libraries(bezier-fit-test ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY})
+target_link_libraries(bezier-fit-test geom-pathstroke 2geom)
 

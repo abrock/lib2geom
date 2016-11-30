@@ -173,6 +173,8 @@ struct Jet {
     v = T(0);
   }
 
+  Jet() : a(0), v(0) {}
+
   // Constructor from scalar plus variable: a + t_i.
   Jet(const T& value, const T& _v) {
     a = value;
