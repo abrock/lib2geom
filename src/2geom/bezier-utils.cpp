@@ -89,18 +89,17 @@ struct BezierfitData {
 };
 
 template<class T>
-std::pair<T, T> bezier_distance(
+std::pair<T, T> bezier_templated(
         Geom::Point const start,
         Geom::Point const end,
         T const mid1_x,
         T const mid1_y,
         T const mid2_x,
         T const mid2_y,
-        T const t,
-        Geom::Point const target
+        T const t
         ) {
 
-    /* Calculation of ||bezier(t) - target|| - width */
+    /* Calculation of bezier(t) - target */
     T const c0 = (T(1) - t) * (T(1) - t) * (T(1) - t);
     T const c1 = T(3) * (T(1) - t) * (T(1) - t) * t;
     T const c2 = T(3) * (T(1) - t) * t * t;
@@ -118,7 +117,7 @@ std::pair<T, T> bezier_distance(
             c2 * T(mid2_y) +
             c3 * T(end.y());
 
-    return std::make_pair(bez_x - T(target.x()), bez_y - T(target.y()));
+    return std::make_pair(bez_x, bez_y);
 }
 
 /**
@@ -150,18 +149,17 @@ int bezierfit_f (
         else if (t > 1) {
             t = 1;
         }
-        auto const result = bezier_distance(
+        auto const result = bezier_templated(
                     d->start,
                     d->end,
                     mid1_x,
                     mid1_y,
                     mid2_x,
                     mid2_y,
-                    t,
-                    d->target[ii]
+                    t
                     );
-        gsl_vector_set(f, 2*ii, result.first);
-        gsl_vector_set(f, 2*ii+1, result.second);
+        gsl_vector_set(f, 2*ii, result.first - d->target[ii].x());
+        gsl_vector_set(f, 2*ii+1, result.second - d->target[ii].y());
     }
     return GSL_SUCCESS;
 }
@@ -202,30 +200,28 @@ int bezierfit_df (
         }
         ceres::Jet<> jet_t(t, 0.);
         for (size_t jj = 0; jj < 4; ++jj) {
-            auto const result = bezier_distance(
+            auto const result = bezier_templated(
                         d->start,
                         d->end,
                         (0 == jj) ? jets_diff[0] : jets_const[0],
                         (1 == jj) ? jets_diff[1] : jets_const[1],
                         (2 == jj) ? jets_diff[2] : jets_const[2],
                         (3 == jj) ? jets_diff[3] : jets_const[3],
-                        jet_t,
-                        d->target[ii]
+                        jet_t
                         );
             gsl_matrix_set(J, 2*ii, jj, result.first.v);
             gsl_matrix_set(J, 2*ii+1, jj, result.second.v);
             //std::cout << "(" << result.first.v << ", " << result.second.v << ") ";
         }
         ceres::Jet<> jet_t_diff(t, 1.);
-        auto const result = bezier_distance(
+        auto const result = bezier_templated(
                     d->start,
                     d->end,
                     jets_const[0],
                     jets_const[1],
                     jets_const[2],
                     jets_const[3],
-                    jet_t_diff,
-                    d->target[ii]
+                    jet_t_diff
                     );
         gsl_matrix_set(J, 2*ii, 4+ii, result.first.v);
         gsl_matrix_set(J, 2*ii+1, 4+ii, result.second.v);
@@ -359,7 +355,7 @@ std::pair<double, double> fit_bezier(Geom::CubicBezier& c, std::vector<Geom::Poi
 
     const double xtol = 1e-8;
     const double gtol = 1e-8;
-    const double ftol = 1e-16;
+    const double ftol = 1e-12;
 
     /* define the function to be minimized */
     fdf.f = bezierfit_f;
