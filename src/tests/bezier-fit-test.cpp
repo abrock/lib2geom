@@ -135,7 +135,72 @@ TEST(CubicBezier, fitTest) {
     std::cout << "New method: ";
     std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now();
     size_t counter = 0;
-    for (size_t ii = 0; ii < 100; ++ii) {
+    for (size_t ii = 0; ii < 300; ++ii) {
+        Geom::CubicBezier fitted(start, start, end, end);
+        result = Geom::fit_bezier(fitted, target);
+        counter++;
+    }
+    std::chrono::high_resolution_clock::time_point stop_time = std::chrono::high_resolution_clock::now();
+    double time = std::chrono::duration_cast<std::chrono::duration<double>>(stop_time - start_time).count();
+    double const new_speed = static_cast<double>(counter) / time;
+    std::cout << new_speed << " curves per second" << std::endl;
+    std::cout << "Worst error: " << result.first << " at t=" << result.second << std::endl;
+}
+
+
+TEST(CubicBezier, degenerateCurveTest) {
+    Geom::Point start(0,0);
+    Geom::Point mid1(-5,0);
+    Geom::Point mid2(3, 0);
+    Geom::Point end(5,0);
+    Geom::CubicBezier bez(start, mid1, mid2, end);
+
+    std::vector<Geom::Point> target;
+    const size_t num_points = 20;
+    for (size_t ii = 0; ii < num_points; ++ii) {
+        double const t = static_cast<double>(ii) / (num_points - 1);
+        target.push_back(bez.pointAt(t));
+    }
+    Geom::CubicBezier fitted(start, start, end, end);
+    auto result = Geom::fit_bezier(fitted, target);
+
+    std::cout << "Running speedTest" << std::endl;
+    std::cout << "New method: ";
+    std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now();
+    size_t counter = 0;
+    for (size_t ii = 0; ii < 300; ++ii) {
+        Geom::CubicBezier fitted(start, start, end, end);
+        result = Geom::fit_bezier(fitted, target);
+        counter++;
+    }
+    std::chrono::high_resolution_clock::time_point stop_time = std::chrono::high_resolution_clock::now();
+    double time = std::chrono::duration_cast<std::chrono::duration<double>>(stop_time - start_time).count();
+    double const new_speed = static_cast<double>(counter) / time;
+    std::cout << new_speed << " curves per second" << std::endl;
+    std::cout << "Worst error: " << result.first << " at t=" << result.second << std::endl;
+}
+
+TEST(CubicBezier, nearlyDegenerateCurveTest) {
+    Geom::Point start(0,0);
+    Geom::Point mid1(-5,0.1);
+    Geom::Point mid2(3, 0);
+    Geom::Point end(5,0);
+    Geom::CubicBezier bez(start, mid1, mid2, end);
+
+    std::vector<Geom::Point> target;
+    const size_t num_points = 20;
+    for (size_t ii = 0; ii < num_points; ++ii) {
+        double const t = static_cast<double>(ii) / (num_points - 1);
+        target.push_back(bez.pointAt(t));
+    }
+    Geom::CubicBezier fitted(start, start, end, end);
+    auto result = Geom::fit_bezier(fitted, target);
+
+    std::cout << "Running speedTest" << std::endl;
+    std::cout << "New method: ";
+    std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now();
+    size_t counter = 0;
+    for (size_t ii = 0; ii < 300; ++ii) {
         Geom::CubicBezier fitted(start, start, end, end);
         result = Geom::fit_bezier(fitted, target);
         counter++;

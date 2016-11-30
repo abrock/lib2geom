@@ -142,16 +142,14 @@ int bezierfit_f (
     double const mid2_x = gsl_vector_get (x, 2);
     double const mid2_y = gsl_vector_get (x, 3);
 
-    // If the t_ii are not in the range [0,1], abort.
     for (size_t ii = 0; ii < n; ii++) {
-        double const t = gsl_vector_get(x, 4 + ii);
-        if (t < -.1 || t > 1.1) {
-            std::cout << "failed at #" << ii << " with t_ii=" << t << std::endl;
-            return GSL_EDOM;
+        double t = gsl_vector_get(x, 4 + ii);
+        if (t < 0) {
+            t = 0;
         }
-    }
-    for (size_t ii = 0; ii < n; ii++) {
-        double const t = gsl_vector_get(x, 4 + ii);
+        else if (t > 1) {
+            t = 1;
+        }
         auto const result = bezier_distance(
                     d->start,
                     d->end,
@@ -361,7 +359,7 @@ std::pair<double, double> fit_bezier(Geom::CubicBezier& c, std::vector<Geom::Poi
 
     const double xtol = 1e-8;
     const double gtol = 1e-8;
-    const double ftol = 1e-8;
+    const double ftol = 1e-16;
 
     /* define the function to be minimized */
     fdf.f = bezierfit_f;
@@ -379,8 +377,8 @@ std::pair<double, double> fit_bezier(Geom::CubicBezier& c, std::vector<Geom::Poi
     //gsl_multifit_nlinear_winit (&x.vector, &wts.vector, &fdf, w);
     gsl_multifit_nlinear_init (&x.vector, &fdf, workspace);
 
-    /* solve the system with a maximum of 5 iterations */
-    status = gsl_multifit_nlinear_driver(5, xtol, gtol, ftol,
+    /* solve the system with a maximum of 50 iterations */
+    status = gsl_multifit_nlinear_driver(50, xtol, gtol, ftol,
                                          NULL, NULL, &info, workspace);
 
     c.setPoint(1, Geom::Point(gsl_vector_get(workspace->x, 0), gsl_vector_get(workspace->x, 1)));
@@ -388,6 +386,7 @@ std::pair<double, double> fit_bezier(Geom::CubicBezier& c, std::vector<Geom::Poi
 
     double worst_error = 0;
     double worst_time = 0.5;
+    size_t out_of_range = 0;
     for (size_t ii = 0; ii < num_points; ++ii) {
         double const current_error = std::sqrt(
                     gsl_vector_get(workspace->f, 2*ii) * gsl_vector_get(workspace->f, 2*ii) +
@@ -397,10 +396,14 @@ std::pair<double, double> fit_bezier(Geom::CubicBezier& c, std::vector<Geom::Poi
             worst_error = current_error;
             worst_time = gsl_vector_get(workspace->x, 2 + ii);
         }
+        double const current_time = gsl_vector_get(workspace->x, 2 + ii);
+        if (current_time < 0 || current_time > 1) {
+            out_of_range++;
+        }
     }
 
     gsl_multifit_nlinear_free (workspace);
-
+    //std::cout << out_of_range << " out of range from " << num_points << std::endl;
     return std::make_pair(worst_error, worst_time);
 }
 
