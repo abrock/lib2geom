@@ -758,71 +758,62 @@ void get_cubic_data(Geom::CubicBezier const& bez, double time, double& len, doub
     len = l;
 }
 
-double _offset_cubic_stable_sub(
-        Geom::CubicBezier const& bez,
-        Geom::CubicBezier& c,
-        const Geom::Point& start_normal,
-        const Geom::Point& end_normal,
-        const Geom::Point& start_new,
-        const Geom::Point& end_new,
-        const double start_rad,
-        const double end_rad,
-        const double start_len,
-        const double end_len,
-        const double width,
-        const double width_correction) {
-    using Geom::X;
-    using Geom::Y;
-
-    double start_off = 1, end_off = 1;
-    // correction of the lengths of the tangent to the offset
-    if (!Geom::are_near(start_rad, 0))
-        start_off += (width + width_correction) / start_rad;
-    if (!Geom::are_near(end_rad, 0))
-        end_off += (width + width_correction) / end_rad;
-
-    // We don't change the direction of the control points
-    if (start_off < 0) {
-        start_off = 0;
-    }
-    if (end_off < 0) {
-        end_off = 0;
-    }
-    start_off *= start_len;
-    end_off *= end_len;
-    // --------
-
-    Geom::Point mid1_new = start_normal.ccw()*start_off;
-    mid1_new = Geom::Point(start_new[X] + mid1_new[X]/3., start_new[Y] + mid1_new[Y]/3.);
-    Geom::Point mid2_new = end_normal.ccw()*end_off;
-    mid2_new = Geom::Point(end_new[X] - mid2_new[X]/3., end_new[Y] - mid2_new[Y]/3.);
-
-    // create the estimate curve
-    c = Geom::CubicBezier(start_new, mid1_new, mid2_new, end_new);
-
-    // check the tolerance for our estimate to be a parallel curve
-
-    double worst_residual = 0;
-    for (size_t ii = 3; ii <= 7; ii+=2) {
-        const double t = static_cast<double>(ii) / 10;
-        const Geom::Point req = bez.pointAt(t);
-        const Geom::Point chk = c.pointAt(c.nearestTime(req));
-        const double current_residual = (chk-req).length() - std::abs(width);
-        if (std::abs(current_residual) > std::abs(worst_residual)) {
-            worst_residual = current_residual;
-        }
-    }
-    return worst_residual;
-}
-
+/**
+ * @brief The BezierfitGeomDistanceData struct Holds the data necessary for fitting a Bezier curve
+ * to have constant distance from a given Bezier curve
+ */
 struct BezierfitGeomDistanceData {
+    /**
+     * @brief n Number of target points for fit
+     */
     size_t n;
+    /**
+     * @brief width Desired distance between target points and fitted curve.
+     * Not to be confused with a convergence threshold, the algorithm attempts
+     * to make the curve exactly this distance to the target points.
+     */
     double width;
+    /**
+     * @brief target Array of target points.
+     */
     Geom::Point * target;
-    Geom::Point start, end, dir1, dir2;
+    /**
+     * @brief start Start point of the fitted Bezier.
+     */
+    Geom::Point start;
+    /**
+     * @brief end End point of the fitted Bezier.
+     */
+    Geom::Point end;
+    /**
+     * @brief dir1 Direction vector of the second control point wrt. start.
+     */
+    Geom::Point dir1;
+    /**
+     * @brief dir2 Direction vector of the third control point wrt. end.
+     */
+    Geom::Point dir2;
 };
 
 template<class T>
+/**
+ * @brief JetDistanceF Calculate residuals for fitting a Bezier curve to a constant distance to some points.
+ * @param start Start point of the fitted Bezier.
+ * @param end End point of the fitted Bezier.
+ * @param dir1 Direction vector of the second control point wrt. start.
+ * @param dir2 Direction vector of the third control point wrt. end.
+ * @param target Target point on the original curve.
+ * @param t Time point on the fitted curve
+ * @param l1 The second control point is calculated as start + l1 * dir1
+ * @param l2 The third control is calculated as end + l2 * dir2
+ * @param width Desired width.
+ * @return First: (distance between bezier(t) and target) minus width.
+ * Second: Cosine of angle between first derivative of bezier wrt. t and offset vector between target and bezier(t)
+ * The first residual punishes curves which have not the desired distance to the target points,
+ * the second residual punishes time points t for which the distance between bezier(t) and target is not minimized.
+ * Note that we don't want to minimize the distance between bezier(t) and target,
+ * we only want bezier(t) to be the projection of the target on the curve.
+ */
 std::pair<T, T> JetDistanceF(
         Geom::Point const start,
         Geom::Point const end,
@@ -883,23 +874,31 @@ std::pair<T, T> JetDistanceF(
 
     T const derivative_length = ceres::sqrt(derivative_x * derivative_x + derivative_y * derivative_y);
 
-    T const angle = (derivative_x * diff_x + derivative_y * diff_y) / (derivative_length * diff_length);
+    T const cos_alpha = (derivative_x * diff_x + derivative_y * diff_y) / (derivative_length * diff_length);
 
-    return std::make_pair(result_diff, angle);
+    return std::make_pair(result_diff, cos_alpha);
 }
 
-int
-BezierfitGeomDistanceF (const gsl_vector * x, void *data,
-                        gsl_vector * f)
+/**
+ * @brief BezierfitGeomDistanceF Calculate residuals for GSL nonlinear least squares solver.
+ * The target objective is to fit a bezier curve s.t. it has constant distance to a given bezier curve.
+ * @param[in] x Input data (l1, l2, time points t_i) (adjusted by GSL for each iteration)
+ * @param[in] data Constant curve-fitting data: @see BezierfitGeomDistanceData
+ * @param[out] f Computed residuals
+ * @return
+ */
+int BezierfitGeomDistanceF (
+        const gsl_vector * x,
+        void *data,
+        gsl_vector * f)
 {
     struct BezierfitGeomDistanceData * d = static_cast<struct BezierfitGeomDistanceData *>(data);
     size_t const n = d->n;
 
     double const l1 = gsl_vector_get (x, 0);
     double const l2 = gsl_vector_get (x, 1);
-    size_t ii;
-    for (ii = 0; ii < n; ii++)
-    {
+
+    for (size_t ii = 0; ii < n; ii++) {
         double t = gsl_vector_get(x, 2 + ii);
         if (t < 0) {
             t = 0;
@@ -907,16 +906,6 @@ BezierfitGeomDistanceF (const gsl_vector * x, void *data,
         else if (t > 1) {
             t = 1;
         }
-
-        /*
-        std::vector<Geom::Point> f_t = curve.pointAndDerivatives(t, 1);
-
-        Geom::Point diff_t = f_t[0] - d->target[ii];
-        double const residual_diff = diff_t.length() - d->width;
-
-        //double const angle = Geom::dot(f_t[1], diff_t);
-        double const angle = Geom::dot(f_t[1], diff_t) / (f_t[1].length() * diff_t.length());
-        // */
 
         auto const result = JetDistanceF(
                     d->start,
@@ -930,18 +919,25 @@ BezierfitGeomDistanceF (const gsl_vector * x, void *data,
                     d->width
                     );
 
-        double residual_diff = result.first;
-        double angle = result.second;
-
-        gsl_vector_set(f, 2*ii, residual_diff);
-        gsl_vector_set(f, 2*ii+1, angle);
+        gsl_vector_set(f, 2*ii, result.first); // distance residual
+        gsl_vector_set(f, 2*ii+1, result.second); // Angle residual
     }
-
     return GSL_SUCCESS;
 }
 
-int BezierfitGeomDistanceDF (const gsl_vector * x, void *data,
-                         gsl_matrix * J)
+/**
+ * @brief BezierfitGeomDistanceDF Calculate derivatives of residuals for GSL nonlinear least squares solver.
+ * The target objective is to fit a bezier curve s.t. it has constant distance to a given bezier curve.
+ * @see BezierfitGeomDistanceF, @see JetDistanceF
+ * @param[in] x Input data (l1, l2, time points t_i) (adjusted by GSL for each iteration)
+ * @param[in] data Constant curve-fitting data: @see BezierfitGeomDistanceData
+ * @param[out] f Computed residuals
+ * @return
+ */
+int BezierfitGeomDistanceDF (
+        const gsl_vector * x,
+        void *data,
+        gsl_matrix * J)
 {
     struct BezierfitGeomDistanceData * d = static_cast<struct BezierfitGeomDistanceData *>(data);
     size_t const n = d->n;
@@ -952,12 +948,6 @@ int BezierfitGeomDistanceDF (const gsl_vector * x, void *data,
     gsl_matrix_set_zero(J);
     for (ii = 0; ii < n; ii++)
     {
-        /* Model Yi = A * exp(-lambda * i) + b */
-        /*
-        double t = i;
-        double Yi = A * exp (-lambda * t) + b;
-        gsl_vector_set (f, i, Yi - y[i]);
-        */
         double t = gsl_vector_get(x, 2 + ii);
         if (t < 0) {
             t = 0;
@@ -1028,6 +1018,15 @@ int BezierfitGeomDistanceDF (const gsl_vector * x, void *data,
 
 #define GSL_DBG_MSG 0
 
+/**
+ * @brief fitDistance Fit a bezier curve so it has constant distance to a set of target points.
+ * @param c The bezier curve to fit. Only the lengthes of the curve handles are adjusted.
+ * @param width Desired distance between fitted curve and target points.
+ * @param orig_target Target points
+ * @param initial_t Initial guesses for the time points t_i of the projections of the target points
+ * on the fitted bezier curve
+ * @return
+ */
 std::pair<double, double> fitDistance(Geom::CubicBezier& c,
                  double const width,
                  std::vector<Geom::Point> const& orig_target,
@@ -1047,7 +1046,6 @@ std::pair<double, double> fitDistance(Geom::CubicBezier& c,
     const size_t num_points = orig_target.size();
     const size_t num_conditions = 2 * num_points;
     const size_t num_params = 2 + num_points;
-
 
     Geom::Point target[num_points];
 
@@ -1178,25 +1176,17 @@ std::pair<double, double> fitDistance(Geom::CubicBezier& c,
 void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, double tol, size_t levels)
 {
 
-#define USE_GSL_DISTANCE_FIT 1
-
-
     Geom::CubicBezier c;
-#if USE_GSL_DISTANCE_FIT
 
-    using Geom::X;
-    using Geom::Y;
+    Geom::Point const start_pos = bez.initialPoint();
+    Geom::Point const end_pos = bez.finalPoint();
 
-    const Geom::Point start_pos = bez.initialPoint();
-    const Geom::Point end_pos = bez.finalPoint();
-
-    const Geom::Point start_normal = Geom::rot90(bez.unitTangentAt(0));
-    const Geom::Point end_normal = -Geom::rot90(Geom::unitTangentAt(Geom::reverse(bez.toSBasis()), 0.));
-
+    Geom::Point const start_normal = Geom::rot90(bez.unitTangentAt(0));
+    Geom::Point const end_normal = -Geom::rot90(Geom::unitTangentAt(Geom::reverse(bez.toSBasis()), 0.));
 
     // offset the start and end control points out by the width
-    const Geom::Point start_new = start_pos + start_normal*width;
-    const Geom::Point end_new = end_pos + end_normal*width;
+    Geom::Point const start_new = start_pos + start_normal*width;
+    Geom::Point const end_new = end_pos + end_normal*width;
 
     // --------
     double start_rad, end_rad;
@@ -1236,75 +1226,6 @@ void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, dou
         orig_target.push_back(bez.pointAt(t));
     }
     std::pair<double, double> fit_results = fitDistance(c, width, orig_target, initial_t);
-#else
-    using Geom::X;
-    using Geom::Y;
-
-    const Geom::Point start_pos = bez.initialPoint();
-    const Geom::Point end_pos = bez.finalPoint();
-
-    const Geom::Point start_normal = Geom::rot90(bez.unitTangentAt(0));
-    const Geom::Point end_normal = -Geom::rot90(Geom::unitTangentAt(Geom::reverse(bez.toSBasis()), 0.));
-
-    // offset the start and end control points out by the width
-    const Geom::Point start_new = start_pos + start_normal*width;
-    const Geom::Point end_new = end_pos + end_normal*width;
-
-    // --------
-    double start_rad, end_rad;
-    double start_len, end_len; // tangent lengths
-    get_cubic_data(bez, 0, start_len, start_rad);
-    get_cubic_data(bez, 1, end_len, end_rad);
-
-    double best_width_correction = 0;
-    double best_residual = _offset_cubic_stable_sub(
-                bez, c,
-                start_normal, end_normal,
-                start_new, end_new,
-                start_rad, end_rad,
-                start_len, end_len,
-                width, best_width_correction);
-    double stepsize = std::abs(width)/2;
-    bool seen_success = false;
-    double stepsize_threshold = 0;
-    // std::cout << "Residual from " << best_residual << " ";
-    size_t ii = 0;
-    for (; ii < 100 && stepsize > stepsize_threshold; ++ii) {
-        bool success = false;
-        const double width_correction = best_width_correction - (best_residual > 0 ? 1 : -1) * stepsize;
-        Geom::CubicBezier current_curve;
-        const double residual = _offset_cubic_stable_sub(
-                    bez, current_curve,
-                    start_normal, end_normal,
-                    start_new, end_new,
-                    start_rad, end_rad,
-                    start_len, end_len,
-                    width, width_correction);
-        if (std::abs(residual) < std::abs(best_residual)) {
-            best_residual = residual;
-            best_width_correction = width_correction;
-            c = current_curve;
-            success = true;
-            if (std::abs(best_residual) < tol/4) {
-                break;
-            }
-        }
-
-        if (success) {
-            if (!seen_success) {
-                seen_success = true;
-                //std::cout << "Stepsize factor: " << std::abs(width) / stepsize << std::endl;
-                stepsize_threshold = stepsize / 1000;
-            }
-        }
-        else {
-            stepsize /= 2;
-        }
-        if (std::abs(best_width_correction) >= std::abs(width)/2) {
-            //break; // Seems to prevent some numerical instabilities, not clear if useful
-        }
-    }
-#endif
 
     // reached maximum recursive depth
     // don't bother with any more correction
@@ -1326,31 +1247,8 @@ void offset_cubic(Geom::Path& p, Geom::CubicBezier const& bez, double width, dou
         return;
     }
 
-#if USE_GSL_DISTANCE_FIT
-    double worst_err = fit_results.first;
-    double worst_time = fit_results.second;
-
-#else
-    // We find the point on our new curve (c) for which the distance between
-    // (c) and (bez) differs the most from the desired distance (width).
-    double worst_err = 0; // std::abs(best_residual);
-    double worst_time = .5;
-    for (size_t ii = 1; ii <= 9; ++ii) {
-        const double t = static_cast<double>(ii) / 10;
-        const Geom::Point req = bez.pointAt(t);
-        // We use the exact solution with nearestTime because it is numerically
-        // much more stable than simply assuming that the point on (c) closest
-        // to bez.pointAt(t) is given by c.pointAt(t)
-        const Geom::Point chk = c.pointAt(c.nearestTime(req));
-
-        Geom::Point const diff = req - chk;
-        const double err = std::abs(diff.length() - std::abs(width));
-        if (err > worst_err) {
-            worst_err = err;
-            worst_time = t;
-        }
-    }
-#endif
+    double const worst_err = fit_results.first;
+    double const worst_time = fit_results.second;
 
     if (worst_err < tol) {
         if (Geom::are_near(start_new, p.finalPoint())) {
