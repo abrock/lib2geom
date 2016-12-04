@@ -1,3 +1,5 @@
+#include <random>
+
 #include <2geom/d2.h>
 #include <2geom/sbasis.h>
 #include <2geom/bezier-to-sbasis.h>
@@ -96,18 +98,36 @@ public:
         //original_bezier.appendNew<CubicBezier> (B[0]);
         CubicBezier original_bezier(b_handle.pts);
         original_path.append(original_bezier);
+
         std::vector<double> initial_t;
         std::vector<Geom::Point> curve_points;
-        for (size_t ii = 0; ii < num_points; ++ii) {
-            double const t = static_cast<double>(ii) / (num_points-1);
-            Geom::Point const p = original_bezier.pointAt(t);
-            initial_t.push_back(t);
-            curve_points.push_back(p);
+        if (randomize_times) {
+            std::uniform_real_distribution<double> dist_t(0,1);
+            for (size_t ii = 0; ii < num_points; ++ii) {
+                double const t = dist_t(generator);
+                initial_t.push_back(t);
+            }
+            std::sort(initial_t.begin(), initial_t.end());
+            double const min = initial_t.front();
+            double const max = initial_t.back();
+            for (auto& t : initial_t) {
+                t = (t-min)/(max-min);
+            }
+            for (auto const t : initial_t) {
+                curve_points.push_back(original_bezier.pointAt(t));
+            }
+        }
+        else {
+            for (size_t ii = 0; ii < num_points; ++ii) {
+                double const t = static_cast<double>(ii) / (num_points-1);
+                Geom::Point const p = original_bezier.pointAt(t);
+                initial_t.push_back(t);
+                curve_points.push_back(p);
+            }
         }
 
         cairo_set_source_rgba (cr, 0., 0., .9, 1);
         cairo_path(cr, original_path);
-        cross_plot(cr, curve_points);
         draw_text(cr, original_path.initialPoint(), "original curve and old fit");
 
 
@@ -125,8 +145,12 @@ public:
         Geom::Path very_old_version_path;
         very_old_version_path.append(very_old_bezier);
 
-        cairo_set_source_rgba (cr, .9, .9, 0., 1);
+        cairo_set_source_rgba (cr, .7, .7, 0., 1);
+        cairo_stroke(cr);
         cairo_path(cr, very_old_version_path);
+
+        cairo_set_source_rgba (cr, 0., 0., .9, 1);
+        cairo_stroke(cr);
         cross_plot(cr, curve_points);
 
         if(1) {
@@ -147,50 +171,105 @@ public:
             cairo_path(cr, combination_path);
             draw_text(cr, combination_path.initialPoint(), "old fit as i.g.");
         }
-
-        tm.ask_for_timeslice();
-        tm.start();
-        auto new_result = fit_bezier(fitted_new, curve_points);
-        als_time = tm.lap();
-        *notify << "Bezier fit, time = " << als_time << std::endl
-                << "Worst residual: " << new_result.first << " at t=" << new_result.second << std::endl;
-
-        tm.ask_for_timeslice();
-        tm.start();
-        auto new_result_a = experiment::fit_bezier(fitted_new_a, curve_points);
-        als_time = tm.lap();
-        *notify << "Bezier fit a, time = " << als_time << std::endl
-                << "Worst residual: " << new_result_a.first << " at t=" << new_result_a.second << std::endl;
+        {
+            tm.ask_for_timeslice();
+            tm.start();
+            auto new_result = fit_bezier(fitted_new, curve_points);
+            als_time = tm.lap();
+            *notify << "Bezier fit, time = " << als_time << std::endl
+                    << "Worst residual: " << new_result.first << " at t=" << new_result.second << std::endl;
 
 
-        Geom::Path fitted_new_path;
-        translation.setTranslation(Geom::Point(300,0));
-        fitted_new_path.append(fitted_new.transformed(translation));
+            Geom::Path fitted_new_path;
+            translation.setTranslation(Geom::Point(300,0));
+            fitted_new_path.append(fitted_new.transformed(translation));
 
-        cairo_set_source_rgba (cr, .0, .9, .0, 1);
-        cross_plot(cr, curve_points, translation.translation());
-        cairo_path(cr, fitted_new_path);
-        draw_text(cr, fitted_new_path.initialPoint(), "new fit");
+            cairo_set_source_rgba (cr, .0, .9, .0, 1);
+            cross_plot(cr, curve_points, translation.translation());
+            cairo_path(cr, fitted_new_path);
+            draw_text(cr, fitted_new_path.initialPoint(), "new fit");
+        }
+
+        {
+            tm.ask_for_timeslice();
+            tm.start();
+            auto new_result_a = experiment::fit_bezier(fitted_new_a, curve_points);
+            als_time = tm.lap();
+            *notify << "Bezier fit a, time = " << als_time << std::endl
+                    << "Worst residual: " << new_result_a.first << " at t=" << new_result_a.second << std::endl;
 
 
-        Geom::Path fitted_new_a_path;
-        translation.setTranslation(Geom::Point(0,300));
-        fitted_new_a_path.append(fitted_new_a.transformed(translation));
 
 
-        cairo_set_source_rgba (cr, .9, .0, .0, 1);
-        cross_plot(cr, curve_points, translation.translation());
-        cairo_path(cr, fitted_new_a_path);
-        draw_text(cr, fitted_new_a_path.initialPoint(), "new fit (a)");
+            Geom::Path fitted_new_a_path;
+            translation.setTranslation(Geom::Point(0,300));
+            fitted_new_a_path.append(fitted_new_a.transformed(translation));
 
+
+            cairo_set_source_rgba (cr, .9, .0, .0, 1);
+            cross_plot(cr, curve_points, translation.translation());
+            cairo_path(cr, fitted_new_a_path);
+            draw_text(cr, fitted_new_a_path.initialPoint(), "new fit (a)");
+        }
+
+        Geom::CubicBezier fixed_times_bezier;
+        {
+            tm.ask_for_timeslice();
+            tm.start();
+            auto fixed_times_result = experiment::fit_bezier_fixed_times(fixed_times_bezier, curve_points);
+            als_time = tm.lap();
+            *notify << "Bezier fit a (fixed times), time = " << als_time << std::endl
+                    << "Worst residual: " << fixed_times_result.first << " at t=" << fixed_times_result.second << std::endl;
+
+            Geom::Path fixed_times_path;
+            translation.setTranslation(Geom::Point(600,300));
+            fixed_times_path.append(fixed_times_bezier.transformed(translation));
+
+            cairo_set_source_rgba (cr, .9, .0, .0, 1);
+            cross_plot(cr, curve_points, translation.translation());
+            cairo_path(cr, fixed_times_path);
+            draw_text(cr, fixed_times_path.initialPoint(), "fixed t fit (a)");
+        }
+
+        Geom::CubicBezier fixed_times_ig_bezier = fixed_times_bezier;
+        {
+            tm.ask_for_timeslice();
+            tm.start();
+            auto fixed_times_ig_result = experiment::fit_bezier(fixed_times_ig_bezier, curve_points);
+            als_time = tm.lap();
+            *notify << "Bezier fit a (with fixed times as i.g.), time = " << als_time << std::endl
+                    << "Worst residual: " << fixed_times_ig_result.first << " at t=" << fixed_times_ig_result.second << std::endl;
+
+            Geom::Path fixed_times_path;
+            translation.setTranslation(Geom::Point(900,300));
+            fixed_times_path.append(fixed_times_ig_bezier.transformed(translation));
+
+            cairo_set_source_rgba (cr, .9, .0, .0, 1);
+            cross_plot(cr, curve_points, translation.translation());
+            cairo_path(cr, fixed_times_path);
+            draw_text(cr, fixed_times_path.initialPoint(), "new (a) with fixed t as i.g.");
+        }
 
         std::cout << "original: " << write_svg_path(original_path) << std::endl;
-        std::cout << "new fit: " << write_svg_path(fitted_new_path) << std::endl;
-        std::cout << "new_a fit: " << write_svg_path(fitted_new_a_path) << std::endl;
 
+        Geom::CubicBezier initial_guess(
+                    curve_points.front(), curve_points.front(),
+                    curve_points.back(), curve_points.back()
+                    );
+        {
+            experiment::get_initial_guess(initial_guess, curve_points);
 
+            Geom::Path initial_guess_path;
+            translation.setTranslation(Geom::Point(600,0));
+            initial_guess_path.append(initial_guess.transformed(translation));
 
+            cairo_set_source_rgba (cr, .8, .0, .8, 1);
+            cross_plot(cr, curve_points, translation.translation());
+            cairo_path(cr, initial_guess_path);
+            draw_text(cr, initial_guess_path.initialPoint(), "initial guess");
+        }
 
+        cairo_stroke(cr);
 
         Toy::draw(cr, notify, width, height, save,timer_stream);
     }
@@ -208,12 +287,15 @@ public:
         // M 70 250 C 860 766 200 350 350 200
         // M 70 250 C 906 833 200 350 350 200
         // M 70 250 C 800 738 200 350 350 200
-        sliders.push_back(Slider(0, 100, 1, 25, "number of points"));
+        sliders.push_back(Slider(2, 50, 1, 25, "number of points"));
         handles.push_back(&(sliders[0]));
     }
 private:
     std::vector<Slider> sliders;
     bool first_time = true;
+    bool randomize_times = false;
+    std::random_device rd;
+    std::default_random_engine generator;
 };
 
 int main(int argc, char **argv) {
