@@ -52,11 +52,15 @@
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_multifit_nlinear.h>
 
-#include <2geom/bezier-utils.h>
+#include "bezierfit.h"
+
+#include <random>
+
+namespace experiment {
+#include "bezierfit-a.h"
+}
 
 namespace Geom {
-
-#include "half-outline-old.cpp"
 
 namespace fs = boost::filesystem;
 
@@ -129,7 +133,7 @@ TEST(CubicBezier, fitTest) {
         target.push_back(bez.pointAt(t));
     }
     Geom::CubicBezier fitted(start, start, end, end);
-    auto result = Geom::fit_bezier(fitted, target);
+    auto result = fit_bezier(fitted, target);
 
     std::cout << "Running speedTest" << std::endl;
     std::cout << "New method: ";
@@ -137,12 +141,26 @@ TEST(CubicBezier, fitTest) {
     size_t counter = 0;
     for (size_t ii = 0; ii < 300; ++ii) {
         Geom::CubicBezier fitted(start, start, end, end);
-        result = Geom::fit_bezier(fitted, target);
+        result = fit_bezier(fitted, target);
         counter++;
     }
     std::chrono::high_resolution_clock::time_point stop_time = std::chrono::high_resolution_clock::now();
     double time = std::chrono::duration_cast<std::chrono::duration<double>>(stop_time - start_time).count();
-    double const new_speed = static_cast<double>(counter) / time;
+    double new_speed = static_cast<double>(counter) / time;
+    std::cout << new_speed << " curves per second" << std::endl;
+    std::cout << "Worst error: " << result.first << " at t=" << result.second << std::endl;
+
+    std::cout << "Experimental improvements:" << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+    counter = 0;
+    for (size_t ii = 0; ii < 300; ++ii) {
+        Geom::CubicBezier fitted(start, start, end, end);
+        result = experiment::fit_bezier(fitted, target);
+        counter++;
+    }
+    stop_time = std::chrono::high_resolution_clock::now();
+    time = std::chrono::duration_cast<std::chrono::duration<double>>(stop_time - start_time).count();
+    new_speed = static_cast<double>(counter) / time;
     std::cout << new_speed << " curves per second" << std::endl;
     std::cout << "Worst error: " << result.first << " at t=" << result.second << std::endl;
 }
@@ -162,7 +180,7 @@ TEST(CubicBezier, degenerateCurveTest) {
         target.push_back(bez.pointAt(t));
     }
     Geom::CubicBezier fitted(start, start, end, end);
-    auto result = Geom::fit_bezier(fitted, target);
+    auto result = fit_bezier(fitted, target);
 
     std::cout << "Running speedTest" << std::endl;
     std::cout << "New method: ";
@@ -170,12 +188,26 @@ TEST(CubicBezier, degenerateCurveTest) {
     size_t counter = 0;
     for (size_t ii = 0; ii < 300; ++ii) {
         Geom::CubicBezier fitted(start, start, end, end);
-        result = Geom::fit_bezier(fitted, target);
+        result = fit_bezier(fitted, target);
         counter++;
     }
     std::chrono::high_resolution_clock::time_point stop_time = std::chrono::high_resolution_clock::now();
     double time = std::chrono::duration_cast<std::chrono::duration<double>>(stop_time - start_time).count();
-    double const new_speed = static_cast<double>(counter) / time;
+    double new_speed = static_cast<double>(counter) / time;
+    std::cout << new_speed << " curves per second" << std::endl;
+    std::cout << "Worst error: " << result.first << " at t=" << result.second << std::endl;
+
+    std::cout << "Experimental improvements:" << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+    counter = 0;
+    for (size_t ii = 0; ii < 300; ++ii) {
+        Geom::CubicBezier fitted(start, start, end, end);
+        result = experiment::fit_bezier(fitted, target);
+        counter++;
+    }
+    stop_time = std::chrono::high_resolution_clock::now();
+    time = std::chrono::duration_cast<std::chrono::duration<double>>(stop_time - start_time).count();
+    new_speed = static_cast<double>(counter) / time;
     std::cout << new_speed << " curves per second" << std::endl;
     std::cout << "Worst error: " << result.first << " at t=" << result.second << std::endl;
 }
@@ -194,7 +226,7 @@ TEST(CubicBezier, nearlyDegenerateCurveTest) {
         target.push_back(bez.pointAt(t));
     }
     Geom::CubicBezier fitted(start, start, end, end);
-    auto result = Geom::fit_bezier(fitted, target);
+    auto result = fit_bezier(fitted, target);
 
     std::cout << "Running speedTest" << std::endl;
     std::cout << "New method: ";
@@ -202,14 +234,98 @@ TEST(CubicBezier, nearlyDegenerateCurveTest) {
     size_t counter = 0;
     for (size_t ii = 0; ii < 300; ++ii) {
         Geom::CubicBezier fitted(start, start, end, end);
-        result = Geom::fit_bezier(fitted, target);
+        result = fit_bezier(fitted, target);
         counter++;
     }
     std::chrono::high_resolution_clock::time_point stop_time = std::chrono::high_resolution_clock::now();
     double time = std::chrono::duration_cast<std::chrono::duration<double>>(stop_time - start_time).count();
-    double const new_speed = static_cast<double>(counter) / time;
+    double new_speed = static_cast<double>(counter) / time;
     std::cout << new_speed << " curves per second" << std::endl;
     std::cout << "Worst error: " << result.first << " at t=" << result.second << std::endl;
+
+    std::cout << "Experimental improvements:" << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+    counter = 0;
+    for (size_t ii = 0; ii < 300; ++ii) {
+        Geom::CubicBezier fitted(start, start, end, end);
+        result = experiment::fit_bezier(fitted, target);
+        counter++;
+    }
+    stop_time = std::chrono::high_resolution_clock::now();
+    time = std::chrono::duration_cast<std::chrono::duration<double>>(stop_time - start_time).count();
+    new_speed = static_cast<double>(counter) / time;
+    std::cout << new_speed << " curves per second" << std::endl;
+    std::cout << "Worst error: " << result.first << " at t=" << result.second << std::endl;
+}
+
+TEST(CubicBezier, randomCurveTest) {
+    double worst_old_error = 0;
+    double worst_new_error = 0;
+    Geom::CubicBezier worst_old_curve, worst_new_curve;
+
+    std::default_random_engine generator;
+    std::uniform_real_distribution<double> pm1(-1,1);
+
+    for (size_t ii = 0; ii < 1000; ++ii) {
+        Geom::Point start(0,0);
+        Geom::Point end(1,0);
+        Geom::Point mid1(pm1(generator), pm1(generator));
+        Geom::Point mid2(pm1(generator), pm1(generator));
+
+        Geom::CubicBezier bez(start, mid1, mid2, end);
+
+        std::vector<Geom::Point> target;
+        const size_t num_points = 50;
+        for (size_t ii = 0; ii < num_points; ++ii) {
+            double const t = static_cast<double>(ii) / (num_points - 1);
+            target.push_back(bez.pointAt(t));
+        }
+        Geom::CubicBezier old_fitted(start, start, end, end);
+        auto old_result = fit_bezier(old_fitted, target);
+
+        Geom::CubicBezier new_fitted(start, start, end, end);
+        auto new_result = experiment::fit_bezier(new_fitted, target);
+
+        if (old_result.first > worst_old_error || new_result.first > worst_new_error) {
+            std::cout << "Results in iteration " << ii << std::endl;
+            std::cout << "Worst for old: " << worst_old_error << std::endl;
+            std::cout << "Worst for new: " << worst_new_error << std::endl;
+            if (old_result.first > worst_old_error) {
+                worst_old_error = old_result.first;
+                std::cerr << "Old: " << old_result.first << " at t=" << old_result.second << std::endl;
+            }
+            else {
+                std::cout << "Old: " << old_result.first << " at t=" << old_result.second << std::endl;
+            }
+            {
+                Geom::Path output;
+                output.append(old_fitted);
+                output *= Geom::Scale(40);
+                std::cout << write_svg_path(output) << std::endl;
+            }
+
+            if (new_result.first > worst_new_error) {
+                worst_new_error = new_result.first;
+                std::cerr << "New: " << new_result.first << " at t=" << new_result.second << std::endl;
+            }
+            else {
+                std::cout << "New: " << new_result.first << " at t=" << new_result.second << std::endl;
+            }
+            {
+                Geom::Path output;
+                output.append(new_fitted);
+                output *= Geom::Scale(40);
+                std::cout << write_svg_path(output) << std::endl;
+            }
+            {
+                std::cout << "Original curve: " << std::endl;
+                Geom::Path output;
+                output.append(bez);
+                output *= Geom::Scale(40);
+                std::cout << write_svg_path(output) << std::endl;
+            }
+        }
+    }
 }
 
 } // end namespace Geom

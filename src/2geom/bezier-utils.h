@@ -45,8 +45,6 @@
 
 namespace Geom {
 
-std::pair<double, double> fit_bezier(Geom::CubicBezier& c, std::vector<Geom::Point> const& data);
-
 Point bezier_pt(unsigned degree, Point const V[], double t);
 
 int bezier_fit_cubic(Point bezier[], Point const data[], int len, double error);

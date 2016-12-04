@@ -28,6 +28,7 @@ SET(2GEOM_TOYS-2_SRC
 aa
 arc-bez
 arc-length-param
+bezier-fit
 boolops-toy
 bound-path
 bounds-test
