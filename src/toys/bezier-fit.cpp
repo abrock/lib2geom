@@ -250,6 +250,44 @@ public:
             draw_text(cr, fixed_times_path.initialPoint(), "new (a) with fixed t as i.g.");
         }
 
+        Geom::CubicBezier icp_bezier;
+        {
+            tm.ask_for_timeslice();
+            tm.start();
+            auto icp_result = experiment::fit_bezier_icp(icp_bezier, curve_points);
+            als_time = tm.lap();
+            *notify << "Bezier fit icp, time = " << als_time << std::endl
+                    << "Worst residual: " << icp_result.first << " at t=" << icp_result.second << std::endl;
+
+            Geom::Path icp_path;
+            translation.setTranslation(Geom::Point(600,600));
+            icp_path.append(icp_bezier.transformed(translation));
+
+            cairo_set_source_rgba (cr, .9, .0, .0, 1);
+            cross_plot(cr, curve_points, translation.translation());
+            cairo_path(cr, icp_path);
+            draw_text(cr, icp_path.initialPoint(), "icp fit");
+        }
+
+        Geom::CubicBezier icp_ig_bezier(icp_bezier);
+        {
+            tm.ask_for_timeslice();
+            tm.start();
+            auto icp_ig_result = experiment::fit_bezier(icp_ig_bezier, curve_points);
+            als_time = tm.lap();
+            *notify << "Bezier fit with icp i.g., time = " << als_time << std::endl
+                    << "Worst residual: " << icp_ig_result.first << " at t=" << icp_ig_result.second << std::endl;
+
+            Geom::Path icp_ig_path;
+            translation.setTranslation(Geom::Point(900,600));
+            icp_ig_path.append(icp_ig_bezier.transformed(translation));
+
+            cairo_set_source_rgba (cr, .9, .0, .0, 1);
+            cross_plot(cr, curve_points, translation.translation());
+            cairo_path(cr, icp_ig_path);
+            draw_text(cr, icp_ig_path.initialPoint(), "bezier fit with icp as i.g.");
+        }
+
         std::cout << "original: " << write_svg_path(original_path) << std::endl;
 
         Geom::CubicBezier initial_guess(
