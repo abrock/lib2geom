@@ -1105,7 +1105,7 @@ int Hair::getNextLine(const int lastLine, const Point& p, const std::vector<BOOL
  * and replaces stitches crossing the boundary by stitches ending / starting at the boundary.
  */
 void Hair::purgeOutside() {
-    RunningStats stitchLength;
+    _stitch_length_stats.clear();
     std::vector<std::vector<Point> > newStitches;
     _levels = std::vector<EmbroideryLineLevel>(stitches.size());
     //#pragma omp parallel for
@@ -1133,7 +1133,7 @@ void Hair::purgeOutside() {
         for (size_t ii = 0; ii + 1 < line.size(); ++ii) {
             if (inside[ii] && inside[ii+1]) {
                 newLine.push_back(line[ii+1]);
-                stitchLength.push((line[ii] - line[ii+1]).length());
+                _stitch_length_stats.push((line[ii] - line[ii+1]).length());
                 continue;
             }
             BezierCurve _straightLine = BezierCurveN<1>(line[ii], line[ii+1]);
@@ -1206,7 +1206,7 @@ void Hair::purgeOutside() {
     }
     stitches = newStitches;
     // std::cout << "Number of intersections: " << intersections.size() << std::endl;
-
+    std::cout << "Stitch stats: " << _stitch_length_stats.print() << std::endl;
 
 }
 
@@ -1218,6 +1218,9 @@ double Hair::lineLength(const std::vector<Point>& points) {
     return result;
 }
 
+void Hair::printStats() {
+    std::cout << "Stitch length stats: " << _stitch_length_stats.print() << std::endl;
+}
 
 void Hair::getStitches() {
 
@@ -1233,26 +1236,22 @@ void Hair::getStitches() {
 
     for (size_t ii = initialIndex+1; ii < _curves.size(); ++ii) {
         auto tmp = projection(stitches[ii-1], _curves[ii]);
-        if (!atLeastOneInside(tmp, _outline)) {
-            break;
-        }
         stitches[ii] = tmp;
     }
     for (size_t ii = initialIndex; ii+1 > 0 && ii + 1 < stitches.size(); --ii) {
         auto tmp = projection(stitches[ii+1], _curves[ii]);
-        if (!atLeastOneInside(tmp, _outline)) {
-            break;
-        }
         stitches[ii] = tmp;
     }
     //        for (size_t ii = 0; ii < curves.size(); ii += 2) {
     //            stitches[ii] = vectorOffset(stitches[ii], offset);
     //        }
+
     double currentOffset = 0;
     for (size_t ii = 0; ii < _curves.size(); ++ii) {
         stitches[ii] = vectorOffsetOnCurve(stitches[ii], _curves[ii], currentOffset);
         currentOffset = fmod(currentOffset + _offset, 1.0);
     }
+
 
 }
 
@@ -1358,41 +1357,24 @@ bool Hair::atLeastOneInside(const std::vector<Point>& points, const Path& bounda
  * @param offset The relative offset, usually between -1 and 1
  * @return The moved points.
  */
-std::vector<Point> Hair::vectorOffset(
-        const std::vector<Point>& points,
-        const double offset) {
-    std::vector<Point> result = points;
-    if (points.size() < 2) {
-        return result;
-    }
-    result[0] += (points[1] - points[0]) * offset;
-    for (size_t ii = 1; ii < points.size(); ++ii) {
-        result[ii] += (points[ii] - points[ii-1])*offset;
-    }
-    return result;
-}
-
-/**
- * @brief vectorOffset moves every point in a vector in the direction given by the difference between itself and the previous point.
- * @param points The original points
- * @param offset The relative offset, usually between -1 and 1
- * @return The moved points.
- */
 std::vector<Point> Hair::vectorOffsetOnCurve(
-        const std::vector<Point>& points,
-        const Path& curve,
-        const double offset) {
+        std::vector<Point> const& points,
+        Path const& curve,
+        double const offset) {
     std::vector<Point> result = points;
     if (points.size() < 2) {
         return result;
     }
-    Point lastPoint = points[1];
+    Point last_point = points[1];
     for (size_t ii = 0; ii < points.size(); ++ii) {
-        PathTime t = curve.nearestTime(result[ii]);
-        const double distance = (lastPoint - points[ii]).length();
-        result[ii] = getOffsettedPointOnCurve(curve, t, offset * distance);
+        PathTime t = curve.nearestTime(points[ii]);
 
-        lastPoint = points[ii];
+        //double const error = Geom::distance(points[ii], curve.pointAt(t));
+        //std::cout << error << std::endl; // This is ok, something between 0 and 1e-12
+
+        const double distance = Geom::distance(last_point, points[ii]);
+        result[ii] = getOffsettedPointOnCurve(curve, t, offset * distance);
+        last_point = points[ii];
     }
 
     return result;
@@ -1458,8 +1440,18 @@ void Hair::getStitches(Points& curvePoints, const Path& curve, const double stit
     //std::cerr << "getStitches lengths: " << stat.print() << std::endl;
 }
 
+PathTime plus(PathTime t, double dt) {
+    t.t += dt;
+    while (t.t >= 1.0) {
+        t.t -= 1;
+        t.curve_index += 1;
+    }
+    return t;
+}
+
 Point Hair::getOffsettedPointOnCurve(const Path& curve, PathTime& t, const double targetOffset) {
-    std::vector<Point> data = curve.at(t.curve_index).pointAndDerivatives(t.t, 1);
+    /*
+    std::vector<Point> const data = curve.at(t.curve_index).pointAndDerivatives(t.t, 1);
 
     Point initialGuess = data[0] + data[1] * (targetOffset / data[1].length());
 
@@ -1487,6 +1479,48 @@ Point Hair::getOffsettedPointOnCurve(const Path& curve, PathTime& t, const doubl
     }
     t = projectionTime;
     return projection;
+
+    // */
+
+    //*
+    Geom::Point const orig_point = curve.pointAt(t);
+    double dt = .1;
+    double max_dt = 0;
+    Geom::Point new_point;
+    double new_distance = 0;
+    for (size_t ii = 0; ii < 100; ++ii) {
+        new_point = curve.pointAt(plus(t, dt));
+        new_distance = Geom::distance(new_point, orig_point);
+        if (new_distance > targetOffset) {
+            max_dt = dt;
+            break;
+        }
+        dt *= 2;
+    }
+    double min_dt = 0;
+    for (size_t ii = 0; ii < 100; ++ii) {
+        new_point = curve.pointAt(plus(t, dt));
+        new_distance = Geom::distance(new_point, orig_point);
+        if (new_distance > targetOffset) {
+            max_dt = dt;
+        }
+        else {
+            min_dt = dt;
+        }
+        dt = .5 * (max_dt + min_dt);
+        if (std::abs(new_distance - targetOffset) < 1e-6) {
+            break;
+        }
+    }
+    new_point = curve.pointAt(plus(t, dt));
+    new_distance = Geom::distance(new_point, orig_point);
+    if (std::abs(new_distance - targetOffset) > 1e-2) {
+        std::cout << "Expected " << targetOffset << ", got " << new_distance << std::endl;
+    }
+    t = curve.nearestTime(new_point);
+
+    return curve.pointAt(t);
+    // */
 }
 
 void Hair::makeAreaLarger(Path& curve, const double offset) {
@@ -1506,7 +1540,13 @@ void Hair::getCurves() {
         //#pragma omp section
         {
             for (size_t ii = 0; ii < _max_iter; ++ii) {
-                left = Inkscape::half_outline(left, _line_spacing, _miter, _join_type);
+                try {
+                    left = Inkscape::half_outline(left, _line_spacing, _miter, _join_type);
+                }
+                catch(std::runtime_error const& e) {
+                    std::cout << "Cauch error in left half-outline part: " << e.what() << std::endl;
+                    break;
+                }
                 if (left.intersect(_outline).empty()) {
                     break;
                 }
@@ -1517,7 +1557,13 @@ void Hair::getCurves() {
         //#pragma omp section
         {
             for (size_t ii = 0; ii < _max_iter; ++ii) {
-                right = Inkscape::half_outline(right, _line_spacing, _miter, _join_type);
+                try {
+                    right = Inkscape::half_outline(right, _line_spacing, _miter, _join_type);
+                }
+                catch(std::runtime_error const& e) {
+                    std::cout << "Cauch error in right half-outline part: " << e.what() << std::endl;
+                    break;
+                }
                 if (right.intersect(_outline).empty()) {
                     break;
                 }
@@ -1558,7 +1604,9 @@ void Hair::write(std::ostream& out) {
 
     //writeStitchPoints(out, "00ff00");
     out << "<g>";
-    writePatches(out, stitches);
+    std::string color = getColor(0, greedySolution.size());
+    write(out, getPath(greedySolution), color);
+    writeCircles(out, greedySolution, _stitch_point_radius, color);
     out << "</g>";
 
     out << "<g>";

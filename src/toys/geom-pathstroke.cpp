@@ -22,10 +22,24 @@
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_multifit_nlinear.h>
+#include <gsl/gsl_errno.h>
 
 #include "helper/geom-pathstroke.h"
 
 #include <2geom/jet.h>
+
+void gsl_throw_handler (const char * reason,
+              const char * file,
+              int line,
+              int gsl_errno) {
+    std::stringstream msg;
+    msg << "GSL error occured." << std::endl
+        << "Reason:    " << reason << std::endl
+        << "File:      " << file << std::endl
+        << "Line:      " << line << std::endl
+        << "gsl_errno: " << gsl_errno << std::endl;
+    throw std::runtime_error(msg.str());
+ }
 
 namespace Geom {
 
@@ -1050,6 +1064,8 @@ std::pair<double, double> fitDistance(Geom::CubicBezier& c,
 {
     Geom::Point dir1 = c.controlPoint(1) - c.initialPoint();
     Geom::Point dir2 = c.controlPoint(2) - c.finalPoint();
+
+    gsl_set_error_handler(gsl_throw_handler);
 
     const gsl_multifit_nlinear_type *solver_type = gsl_multifit_nlinear_trust;
     gsl_multifit_nlinear_workspace *workspace;

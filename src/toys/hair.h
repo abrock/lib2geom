@@ -86,7 +86,7 @@ private:
     /**
      * @brief offset Relative offset between the stitches of one line and the next. Relative to current stitch length.
      */
-    Coord _offset = .31;
+    Coord _offset = .311;
 
     double _line_spacing = .5;
 
@@ -145,8 +145,11 @@ private:
 
     std::vector<EmbroideryArea> _areas;
 
+    RunningStats _stitch_length_stats;
 
 public:
+    void printStats();
+
     std::vector<Point> greedySolution;
 
     static Point getCenter(const std::vector<Point>& stitches);
@@ -284,16 +287,6 @@ public:
      * @return
      */
     bool atLeastOneInside(const std::vector<Point>& points, const Path& boundary);
-
-    /**
-     * @brief vectorOffset moves every point in a vector in the direction given by the difference between itself and the previous point.
-     * @param points The original points
-     * @param offset The relative offset, usually between -1 and 1
-     * @return The moved points.
-     */
-    std::vector<Point> vectorOffset(
-            const std::vector<Point>& points,
-            const double _offset = 0.0);
 
     /**
      * @brief vectorOffset moves every point in a vector in the direction given by the difference between itself and the previous point.

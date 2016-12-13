@@ -66,6 +66,8 @@ int main(int argc, char **argv) {
     hair.writeCurves(outline_file + "-curves.svg");
     hair.writeStitches(hair.greedySolution, outline_file + "-greedy.txt");
 
+    hair.printStats();
+
     /*
     hair.writeAreas("tail-1-areas.svg");
 
