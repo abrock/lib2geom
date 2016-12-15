@@ -63,11 +63,12 @@ ellipse-line-intersect-toy
 elliptiarc-3point-center-fitting
 elliptiarc-curve-fitting
 elliptical-arc-toy
+embroidery-hair
+embroidery-feather
 evolute
 filet-minion
 find-derivative
 gear
-hair
 hair-test
 hatches
 implicit-toy
@@ -189,14 +190,15 @@ IF(2GEOM_TOYS)
     ENDFOREACH(source)
 ENDIF(2GEOM_TOYS)
 
-add_library(hair_impl hair-impl.cpp)
+add_library(hair hair.cpp)
 add_library(memoryConsumption memoryconsumption.cpp)
 add_library(geom-pathstroke geom-pathstroke.cpp)
 add_library(embroideryarea embroideryarea.cpp)
-target_link_libraries(hair_impl embroideryarea)
+target_link_libraries(hair embroideryarea)
 
-target_link_libraries(hair_impl 2geom)
+target_link_libraries(hair 2geom)
 
-target_link_libraries(hair-test 2geom gtest gtest_main hair_impl memoryConsumption geom-pathstroke)
-target_link_libraries(hair 2geom hair_impl memoryConsumption geom-pathstroke boost_system boost_filesystem)
+target_link_libraries(hair-test 2geom gtest gtest_main hair memoryConsumption geom-pathstroke)
+target_link_libraries(embroidery-hair    2geom hair memoryConsumption geom-pathstroke boost_system boost_filesystem)
+target_link_libraries(embroidery-feather 2geom hair memoryConsumption geom-pathstroke boost_system boost_filesystem)
 
