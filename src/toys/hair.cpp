@@ -1,4 +1,5 @@
 #include "hair.h"
+#include <cmath>
 
 #include "embroideryoptimization.h"
 
@@ -12,6 +13,25 @@ void Hair::setFeatherCurve(Path const& p) {
 
 void Hair::setFeatherTemplate(Path const& p) {
     _feather_template = p;
+}
+
+
+PathTime plus(PathTime t, double dt) {
+    t.t += dt;
+    while (t.t >= 1.0) {
+        t.t -= 1;
+        t.curve_index += 1;
+    }
+    return t;
+}
+
+PathTime plus(PathTime t, double dt, Path const& curve) {
+    t = plus(t, dt);
+    if (t.curve_index >= curve.size()) {
+        t.curve_index--;
+        t.t = 1.0;
+    }
+    return t;
 }
 
 
@@ -188,6 +208,8 @@ void Hair::runFeather() {
     _feather_corner = getCorner(_feather_template);
 
     std::cout << "Feather corner: " << _feather_corner << std::endl;
+
+    getFeatherStitches();
 
     return;
 
@@ -1247,7 +1269,142 @@ void Hair::printStats() {
     std::cout << "Stitch length stats: " << _stitch_length_stats.print() << std::endl;
 }
 
+Path moveAlongPath(
+        Path const& curve,
+        Path const& template_path,
+        PathTime target
+        ) {
+    Path result = template_path;
+    if (curve.size() < 1) {
+        return result;
+    }
+    if (target.curve_index >= curve.size()) {
+        target.curve_index = curve.size() - 1;
+        target.t = 1;
+    }
+
+    Geom::Affine movement, tmp_mov;
+    movement.setIdentity();
+    movement.setTranslation(-curve.initialPoint());
+
+    Point const targetAngle = Geom::unit_vector(curve[target.curve_index].pointAndDerivatives(target.t, 1)[1]);
+    Point const sourceAngle = Geom::unit_vector(curve[0].pointAndDerivatives(0, 1)[1]);
+    tmp_mov.setIdentity();
+    tmp_mov.setRotation(Geom::angle_between(targetAngle, sourceAngle));
+    movement *= tmp_mov;
+
+    tmp_mov.setIdentity();
+    tmp_mov.setTranslation(curve.pointAt(target));
+
+    movement *= tmp_mov;
+
+    result *= movement;
+
+    return result;
+}
+
+double meanDist(Path const& template_path, Path const& offsetted) {
+    double const stepsize = 0.1;
+
+    double last_distance = 0;
+    double sum = 0;
+    double weight_sum = 0;
+    Point current_point = offsetted.initialPoint();
+    for (size_t ii = 0; ii < offsetted.size(); ++ii) {
+        for (double t = 0; t <= 1; t += stepsize) {
+            Point const next_point = offsetted[ii].pointAt(t);
+
+            double const next_distance = Geom::distance(next_point, current_point);
+            double const weight = next_distance + last_distance;
+            Point const template_point = template_path.pointAt(template_path.nearestTime(current_point));
+
+            double const dist = Geom::distance(current_point, template_point);
+
+            sum += dist * weight;
+            weight_sum += weight;
+
+            current_point = next_point;
+            last_distance = next_distance;
+        }
+    }
+    Point const template_point = template_path.pointAt(template_path.nearestTime(current_point));
+
+    double const dist = Geom::distance(current_point, template_point);
+    double const weight = last_distance;
+    sum += dist * weight;
+    weight_sum += weight;
+
+    return sum / weight_sum;
+}
+
+bool offsetTemplateOnCurve(
+        Path const& template_path,
+        Path const& last_path,
+        Path const& curve,
+        PathTime const last_time,
+        PathTime & new_time,
+        double const target_distance,
+        double &offset) {
+
+    if (offset <= 0) {
+        offset = .1;
+    }
+    double min_offset = 0;
+    double max_offset = std::numeric_limits<double>::max();
+
+    Path offsetted;
+
+    for (size_t ii = 0; ii < 100; ++ii) {
+        new_time = plus(last_time, offset);
+        if (new_time.curve_index >= curve.size()) {
+            max_offset = offset;
+            std::cout << "overflow max_offset: " << max_offset << std::endl;
+            break;
+        }
+        offsetted = moveAlongPath(curve, template_path, new_time);
+        double const current_dist = meanDist(last_path, offsetted);
+        if (current_dist > target_distance) {
+            max_offset = offset;
+            std::cout << "max_offset: " << max_offset << std::endl;
+            break;
+        }
+        offset *= 2;
+    }
+    if (!std::isfinite(max_offset)) {
+        return false;
+    }
+
+    for (size_t ii = 0; ii < 100; ++ii) {
+        offset = (max_offset + min_offset) / 2.;
+        new_time = plus(last_time, offset);
+        offsetted = moveAlongPath(curve, template_path, new_time);
+        double const current_dist = meanDist(last_path, offsetted);
+        if (current_dist > target_distance) {
+            max_offset = offset;
+        }
+        else {
+            min_offset = offset;
+        }
+        if (std::abs(max_offset - min_offset) < 1e-6) {
+            break;
+        }
+    }
+
+    offset = (max_offset + min_offset) / 2.;
+    std::cout << "final offset: " << offset << std::endl;
+
+    new_time = plus(last_time, offset);
+
+    return true;
+}
+
 void Hair::getFeatherStitches() {
+    std::ofstream debug("feather-debug.svg");
+    writeSVGHead(debug);
+    write (debug, _outline, "ff0000");
+    write (debug, _feather_curve, "00ff00");
+    write (debug, _feather_template, "0000ff");
+
     _feather_corner = getCorner(_feather_template);
     _feather_corner_point = _feather_template[_feather_corner].initialPoint();
     PathTime closest = _feather_curve.nearestTime(_feather_corner_point);
@@ -1262,7 +1419,7 @@ void Hair::getFeatherStitches() {
     Point sourceAngle = Geom::unit_vector(_feather_curve[closest.curve_index].pointAndDerivatives(closest.t, 1)[1]);
     Point targetAngle = Geom::unit_vector(_feather_curve[0].pointAndDerivatives(0, 1)[1]);
     movement.setIdentity();
-    double const angle = Geom::angle_between(sourceAngle, targetAngle);
+    double const angle = Geom::angle_between(targetAngle, sourceAngle);
     movement.setRotation(angle);
 
     feather_template *= movement;
@@ -1271,6 +1428,40 @@ void Hair::getFeatherStitches() {
     movement.setTranslation(_feather_curve.initialPoint());
     feather_template *= movement;
 
+    write(debug, feather_template, "000000");
+
+    PathTime last_time(0,0);
+    Path last_path = feather_template;
+    double offset = 0;
+
+    for (size_t ii = 0; ii < 500; ++ii) {
+        PathTime new_time = last_time;
+        bool const success = offsetTemplateOnCurve(
+                    feather_template,
+                    last_path,
+                    _feather_curve,
+                    last_time,
+                    new_time,
+                    _line_spacing,
+                    offset);
+        if (!success) {
+            break;
+        }
+        last_path = moveAlongPath(
+                    _feather_curve,
+                    feather_template,
+                    new_time
+                    );
+        last_time = new_time;
+
+        if (!_outline.intersect(last_path).empty()) {
+            write(debug, last_path, "000000");
+        }
+
+    }
+
+
+    debug << "</svg>" << std::endl;
 }
 
 void Hair::getStitches() {
@@ -1491,14 +1682,6 @@ void Hair::getStitches(Points& curvePoints, const Path& curve, const double stit
     //std::cerr << "getStitches lengths: " << stat.print() << std::endl;
 }
 
-PathTime plus(PathTime t, double dt) {
-    t.t += dt;
-    while (t.t >= 1.0) {
-        t.t -= 1;
-        t.curve_index += 1;
-    }
-    return t;
-}
 
 Point Hair::getOffsettedPointOnCurve(const Path& curve, PathTime& t, const double targetOffset) {
     /*
