@@ -202,3 +202,5 @@ target_link_libraries(hair-test 2geom gtest gtest_main hair memoryConsumption ge
 target_link_libraries(embroidery-hair    2geom hair memoryConsumption geom-pathstroke boost_system boost_filesystem)
 target_link_libraries(embroidery-feather 2geom hair memoryConsumption geom-pathstroke boost_system boost_filesystem)
 
+add_subdirectory(paralleltime)
+target_link_libraries(hair ParallelTime)

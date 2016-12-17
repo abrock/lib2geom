@@ -1,6 +1,6 @@
 #include "hair.h"
 #include <cmath>
-
+#include "paralleltime/paralleltime.h"
 #include "embroideryoptimization.h"
 
 void Hair::setOutline(Path const& p) {
@@ -204,65 +204,55 @@ size_t getCorner(Path const& p) {
 }
 
 void Hair::runFeather() {
+    std::stringstream timings;
 
     _feather_corner = getCorner(_feather_template);
 
     std::cout << "Feather corner: " << _feather_corner << std::endl;
 
+    ParallelTime time, total_time;
+
+    getFeatherCurves();
+    std::cout << "getFeatherCurves: \t" << time.print() << std::endl;
+    timings << "getFeatherCurves: \t" << time.print() << std::endl;
+
+    time.start();
+
     getFeatherStitches();
 
-    return;
+    std::cout << "getFeatherStitches: \t" << time.print() << std::endl;
+    timings << "getFeatherStitches: \t" << time.print() << std::endl;
 
+    time.start();
 
-    clock_t start = clock();
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
-
-    //makeAreaLarger(outline, areaGrow);
-
-    clock_t start2 = clock();
-    getCurves();
-    clock_t stop2 = clock();
-    std::cerr << "getCurves took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
-
-    start2 = clock();
-    getStitches();
-    stop2 = clock();
-    std::cerr << "getStitches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
-
-    start2 = clock();
     purgeOutside();
-    stop2 = clock();
-    std::cerr << "purgeOutside took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+    std::cout << "purgeOutside: \t" << time.print() << std::endl;
+    timings << "purgeOutside: \t" << time.print() << std::endl;
 
-    start2 = clock();
+
+    time.start();
     assignOutlineIntersections();
-    stop2 = clock();
-    std::cerr << "assignOutlineIntersections took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+    std::cout << "assignOutlineIntersections: \t" << time.print() << std::endl;
+    timings << "assignOutlineIntersections: \t" << time.print() << std::endl;
 
-    start2 = clock();
+    time.start();
     getOutlineIntermediateStitches();
-    stop2 = clock();
-    std::cerr << "getOutlineIntersections took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+    std::cout << "getOutlineIntermediateStitches: \t" << time.print() << std::endl;
+    timings << "getOutlineIntermediateStitches: \t" << time.print() << std::endl;
 
-    start2 = clock();
+    time.start();
     assembleAreas();
-    stop2 = clock();
-    std::cerr << "assemblePatches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+    std::cout << "assembleAreas: \t" << time.print() << std::endl;
+    timings << "assembleAreas: \t" << time.print() << std::endl;
 
-    start2 = clock();
+    time.start();
     assembleGreedySolution();
-    stop2 = clock();
-    std::cerr << "assembleGreedySolution took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+    std::cout << "assembleGreedySolution: \t" << time.print() << std::endl;
+    timings << "assembleGreedySolution: \t" << time.print() << std::endl;
 
-    clock_t stop = clock();
-    std::cerr << "Calculation took " << (static_cast<double>(stop-start)) / CLOCKS_PER_SEC << std::endl << std::endl;
+    std::cout << "Timings:" << std::endl << timings.str() << std::endl;
+
+    std::cout << "Total time: " << total_time.print() << std::endl;
 }
 
 void Hair::assembleGreedySolution() {
@@ -819,8 +809,7 @@ void Hair::getBoundaryDiscretization() {
     for (auto it = _outline.begin(); it != _outline.end(); ++it) {
         Path curve;
         curve.append(*it);
-        std::vector<Point> tmpStitches;
-        getStitches(tmpStitches, curve, _discrete_outline_param);
+        std::vector<Point> tmpStitches = getStitchesOnCurve(curve, _discrete_outline_param);
         if (tmp.empty()) {
             tmp = tmpStitches;
         }
@@ -1303,7 +1292,7 @@ Path moveAlongPath(
     return result;
 }
 
-double meanDist(Path const& template_path, Path const& offsetted) {
+double Hair::meanDist(Path const& template_path, Path const& offsetted, const Path &area_of_interest) {
     double const stepsize = 0.1;
 
     double last_distance = 0;
@@ -1312,6 +1301,11 @@ double meanDist(Path const& template_path, Path const& offsetted) {
     Point current_point = offsetted.initialPoint();
     for (size_t ii = 0; ii < offsetted.size(); ++ii) {
         for (double t = 0; t <= 1; t += stepsize) {
+            if (!area_of_interest.empty()) {
+                if (0 == (area_of_interest.winding(current_point) % 2)) {
+                    continue;
+                }
+            }
             Point const next_point = offsetted[ii].pointAt(t);
 
             double const next_distance = Geom::distance(next_point, current_point);
@@ -1327,24 +1321,17 @@ double meanDist(Path const& template_path, Path const& offsetted) {
             last_distance = next_distance;
         }
     }
-    Point const template_point = template_path.pointAt(template_path.nearestTime(current_point));
-
-    double const dist = Geom::distance(current_point, template_point);
-    double const weight = last_distance;
-    sum += dist * weight;
-    weight_sum += weight;
-
     return sum / weight_sum;
 }
 
-bool offsetTemplateOnCurve(
-        Path const& template_path,
-        Path const& last_path,
-        Path const& curve,
-        PathTime const last_time,
-        PathTime & new_time,
-        double const target_distance,
-        double &offset) {
+bool Hair::offsetTemplateOnCurve(Path const& template_path,
+                                 Path const& last_path,
+                                 Path const& curve,
+                                 PathTime const last_time,
+                                 PathTime & new_time,
+                                 double const target_distance,
+                                 double & offset,
+                                 Path const& area_of_interest) {
 
     if (offset <= 0) {
         offset = .1;
@@ -1354,18 +1341,25 @@ bool offsetTemplateOnCurve(
 
     Path offsetted;
 
-    for (size_t ii = 0; ii < 100; ++ii) {
+    for (size_t ii = 0; ii < 1000; ++ii) {
         new_time = plus(last_time, offset);
         if (new_time.curve_index >= curve.size()) {
             max_offset = offset;
-            std::cout << "overflow max_offset: " << max_offset << std::endl;
+            //std::cout << "overflow max_offset: " << max_offset << std::endl;
+            new_time.curve_index = curve.size() - 1;
+            new_time.t = 1;
+            offsetted = moveAlongPath(curve, template_path, new_time);
+            double const current_dist = meanDist(last_path, offsetted, area_of_interest);
+            if (current_dist < target_distance) {
+                return false;
+            }
             break;
         }
         offsetted = moveAlongPath(curve, template_path, new_time);
         double const current_dist = meanDist(last_path, offsetted);
         if (current_dist > target_distance) {
             max_offset = offset;
-            std::cout << "max_offset: " << max_offset << std::endl;
+            //std::cout << "max_offset: " << max_offset << std::endl;
             break;
         }
         offset *= 2;
@@ -1374,31 +1368,31 @@ bool offsetTemplateOnCurve(
         return false;
     }
 
-    for (size_t ii = 0; ii < 100; ++ii) {
+    for (size_t ii = 0; ii < 1000; ++ii) {
         offset = (max_offset + min_offset) / 2.;
         new_time = plus(last_time, offset);
         offsetted = moveAlongPath(curve, template_path, new_time);
-        double const current_dist = meanDist(last_path, offsetted);
+        double const current_dist = meanDist(last_path, offsetted, area_of_interest);
         if (current_dist > target_distance) {
             max_offset = offset;
         }
         else {
             min_offset = offset;
         }
-        if (std::abs(max_offset - min_offset) < 1e-6) {
+        if (std::abs(current_dist - target_distance) < 1e-6) {
             break;
         }
     }
 
     offset = (max_offset + min_offset) / 2.;
-    std::cout << "final offset: " << offset << std::endl;
+    //std::cout << "final offset: " << offset << std::endl;
 
     new_time = plus(last_time, offset);
 
     return true;
 }
 
-void Hair::getFeatherStitches() {
+void Hair::getFeatherCurves() {
     std::ofstream debug("feather-debug.svg");
     writeSVGHead(debug);
     write (debug, _outline, "ff0000");
@@ -1434,6 +1428,11 @@ void Hair::getFeatherStitches() {
     Path last_path = feather_template;
     double offset = 0;
 
+    if (!_outline.intersect(last_path).empty()) {
+        _curves.push_back(last_path);
+        write(debug, last_path, "000000");
+    }
+
     for (size_t ii = 0; ii < 500; ++ii) {
         PathTime new_time = last_time;
         bool const success = offsetTemplateOnCurve(
@@ -1455,6 +1454,7 @@ void Hair::getFeatherStitches() {
         last_time = new_time;
 
         if (!_outline.intersect(last_path).empty()) {
+            _curves.push_back(last_path);
             write(debug, last_path, "000000");
         }
 
@@ -1464,13 +1464,60 @@ void Hair::getFeatherStitches() {
     debug << "</svg>" << std::endl;
 }
 
+std::vector<Geom::Point> Hair::getSingleFeatherStitches(
+        Path const& path,
+        double const length,
+        double offset) {
+    Path const rev_path = path.reversed();
+    if (offset * length <= _min_stitch_length) {
+        offset += 1.0;
+    }
+
+    std::vector<Geom::Point> result;
+    size_t const corner = getCorner(path);
+
+    PathTime forward_start(corner, 0);
+    PathTime backward_start(path.size() - corner, 0);
+
+    if (!Geom::are_near(path.pointAt(forward_start), rev_path.pointAt(backward_start))) {
+        throw std::runtime_error("Unexpected distance between forward and backward starting points");
+    }
+    getOffsettedPointOnCurve(path, forward_start, offset * length);
+    getOffsettedPointOnCurve(rev_path, backward_start, offset * length);
+
+    std::vector<Geom::Point> const forward = getStitchesOnCurve(path, length, forward_start);
+
+    std::vector<Geom::Point> const backward = getStitchesOnCurve(rev_path, length, backward_start);
+
+    result.insert(result.end(), backward.rbegin(), backward.rend());
+    result.push_back(path[corner].initialPoint());
+    result.insert(result.end(), forward.begin(), forward.end());
+
+    return result;
+}
+
+void Hair::getFeatherStitches() {
+    stitches.assign(_curves.size(), std::vector<Point>());
+
+    double offset = 0;
+    std::vector<double> offsets(_curves.size(), 0.0);
+    for (auto & item : offsets) {
+        offset = fmod(offset + _offset, 1.0);
+        item = offset;
+    }
+#pragma omp parallel for
+    for (size_t ii = 0; ii < _curves.size(); ++ii) {
+        stitches[ii] = getSingleFeatherStitches(_curves[ii], _stitch_length, offsets[ii]);
+    }
+}
+
 void Hair::getStitches() {
 
     const size_t initialIndex = _curves.size()/2;
     Path initialCurve = _curves[initialIndex];
 
     stitches.assign(_curves.size(), std::vector<Point>());
-    getStitches(stitches[initialIndex], initialCurve);
+    stitches[initialIndex] = getStitchesOnCurve(initialCurve, _stitch_length);
 
     //enlargeCurves();
 
@@ -1642,21 +1689,19 @@ std::vector<Point> Hair::projection(const std::vector<Point> & src, Path& curve)
     return result;
 }
 
-template<class Points>
-void Hair::getStitches(Points& initialCurvePoints, const Path& initialCurve) {
-    getStitches(initialCurvePoints, initialCurve, _stitch_length);
-}
-
-template<class Points>
-void Hair::getStitches(Points& curvePoints, const Path& curve, const double stitchLength) {
-    PathTime t;
+std::vector<Geom::Point> Hair::getStitchesOnCurve(
+        Path const& curve,
+        double const stitchLength,
+        PathTime const& start) {
+    std::vector<Geom::Point> result;
+    PathTime t = start;
     Point currentPoint = curve.pointAt(t);
-    curvePoints.push_back(currentPoint);
+    result.push_back(currentPoint);
     Point lastPoint = currentPoint;
     RunningStats stat;
     while (true) {
         currentPoint = getOffsettedPointOnCurve(curve, t, stitchLength);
-        curvePoints.push_back(currentPoint);
+        result.push_back(currentPoint);
         stat.push((currentPoint - lastPoint).length());
         //std::cerr << "Size: " << curvePoints.size() << std::endl;
         //std::cerr << currentPoint << std::endl;
@@ -1668,8 +1713,8 @@ void Hair::getStitches(Points& curvePoints, const Path& curve, const double stit
             break;
         }
         bool finished = false;
-        for (size_t ii = 0; ii+1 < curvePoints.size(); ++ii) {
-            if (stitchLength/2 > (currentPoint - curvePoints[ii]).length()) {
+        for (size_t ii = 0; ii+1 < result.size(); ++ii) {
+            if (stitchLength/2 > (currentPoint - result[ii]).length()) {
                 finished = true;
                 break;
             }
@@ -1680,6 +1725,7 @@ void Hair::getStitches(Points& curvePoints, const Path& curve, const double stit
         lastPoint = currentPoint;
     }
     //std::cerr << "getStitches lengths: " << stat.print() << std::endl;
+    return result;
 }
 
 

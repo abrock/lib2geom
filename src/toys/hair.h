@@ -129,7 +129,7 @@ private:
 
     double _max_stitch_length = 10;
 
-    double _min_stitch_length = 1;
+    double _min_stitch_length = .1;
 
     std::vector<double> _initial_stitch_lengths;
     double _initial_stitch_lengths_sum;
@@ -155,9 +155,29 @@ private:
     Point _feather_corner_point;
 
 public:
+
+    double meanDist(Path const& template_path, Path const& offsetted, Path const& area_of_interest = Path());
+
+    bool offsetTemplateOnCurve(
+            Path const& template_path,
+            Path const& last_path,
+            Path const& curve,
+            PathTime const last_time,
+            PathTime & new_time,
+            double const target_distance,
+            double &offset,
+            Path const& area_of_interest = Path());
+
     void setOutline(Path const& p);
 
+    void getFeatherCurves();
+
     void getFeatherStitches();
+
+    std::vector<Geom::Point> getSingleFeatherStitches(
+            Path const& path,
+            double const length,
+            double offset = 0);
 
     void setFeatherCurve(Path const& p);
 
@@ -319,11 +339,10 @@ public:
 
     std::vector<Point> projection(const std::vector<Point> & src, Path& _curve);
 
-    template<class Points>
-    void getStitches(Points& initialCurvePoints, const Path& initialCurve);
-
-    template<class Points>
-    void getStitches(Points& curvePoints, const Path& _curve, const double _stitch_length);
+    std::vector<Geom::Point> getStitchesOnCurve(
+            Path const& curve,
+            double const stitchLength,
+            PathTime const& start = PathTime());
 
     Point getOffsettedPointOnCurve(const Path& _curve, PathTime& t, const double targetOffset);
 
