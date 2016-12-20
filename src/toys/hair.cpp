@@ -111,7 +111,40 @@ void Hair::writeStitches(const std::vector<Point>& stitches, std::ostream& out) 
     out << outputStitch(stitches.back() - offset) << " color:0 flags:16";
 }
 
+void Hair::writeStitches(const std::vector<std::vector<Point> >& stitches_vector, std::ostream& out) {
+    if (stitches_vector.empty()) {
+        return;
+    }
+    const Point offset = getCenter(stitches_vector);
+
+    out << "0.0,0.0 color:0 flags:1" << std::endl
+        << "0.0,0.0 color:0 flags:1" << std::endl
+        << "0.0,0.0 color:0 flags:1" << std::endl
+        << "0.0,0.0 color:0 flags:1" << std::endl;
+
+    for (auto const& area : stitches_vector) {
+
+        out << outputStitch(area.front() - offset) << " color:0 flags:1" << std::endl;
+        out << outputStitch(area.front() - offset) << " color:0 flags:1" << std::endl;
+        out << outputStitch(area.front() - offset) << " color:0 flags:1" << std::endl;
+        for (const Point& stitch : area) {
+            out << outputStitch(stitch - offset) << " color:0 flags:0" << std::endl;
+        }
+    }
+    out << outputStitch(stitches_vector.back().back() - offset) << " color:0 flags:16";
+}
+
 void Hair::writeStitches(const std::vector<Point>& stitches, const char* filename) {
+    std::ofstream out(filename);
+    writeStitches(stitches, out);
+}
+
+void Hair::writeStitches(const std::vector<std::vector<Point> >& stitches, const char* filename) {
+    std::ofstream out(filename);
+    writeStitches(stitches, out);
+}
+
+void Hair::writeStitches(const std::vector<std::vector<Point> >& stitches, std::string filename) {
     std::ofstream out(filename);
     writeStitches(stitches, out);
 }
@@ -1934,7 +1967,6 @@ void Hair::writeOutlineIntersections(std::ostream& out, std::vector<OutlineInter
     }
     const auto path = getPath(points);
     write(out, getPath(points), "ff0000");
-
 }
 
 void Hair::write(std::ostream& out, Path path, std::string color) {
@@ -2018,7 +2050,7 @@ Point Hair::getCenter(const std::vector<Point>& stitches) {
     }
     Point max = stitches.front();
     Point min = max;
-    for (const auto p : stitches) {
+    for (const auto &p : stitches) {
         if (p.x() < min.x()) {
             min.x() = p.x();
         }
@@ -2030,6 +2062,31 @@ Point Hair::getCenter(const std::vector<Point>& stitches) {
         }
         if (p.y() > max.y()) {
             max.y() = p.y();
+        }
+    }
+    return (min+max)/2;
+}
+
+Point Hair::getCenter(const std::vector<std::vector<Point> >& stitches) {
+    if (stitches.empty()) {
+        return Point(0,0);
+    }
+    Point max = stitches.front().front();
+    Point min = max;
+    for (const auto &area : stitches) {
+        for (const auto& p : area) {
+            if (p.x() < min.x()) {
+                min.x() = p.x();
+            }
+            if (p.y() < min.y()) {
+                min.y() = p.y();
+            }
+            if (p.x() > max.x()) {
+                max.x() = p.x();
+            }
+            if (p.y() > max.y()) {
+                max.y() = p.y();
+            }
         }
     }
     return (min+max)/2;

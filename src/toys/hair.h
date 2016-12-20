@@ -189,6 +189,8 @@ public:
 
     static Point getCenter(const std::vector<Point>& stitches);
 
+    static Point getCenter(const std::vector<std::vector<Point> >& stitches);
+
     void assembleGreedySolution();
 
     void getOutlineStitches();
@@ -211,19 +213,37 @@ public:
      * @brief writeStitches Write the stitches into a text file suitable for libembroidery-convert
      * @param filename
      */
-    void writeStitches(const std::vector<Point>& stitches, const char* filename);
+    static void writeStitches(const std::vector<Point>& stitches, const char* filename);
 
     /**
      * @brief writeStitches Write the stitches into a text file suitable for libembroidery-convert
      * @param filename
      */
-    void writeStitches(const std::vector<Point>& stitches, const std::string filename);
+    static void writeStitches(const std::vector<std::vector<Point> >& stitches, const char* filename);
 
-    std::string outputStitch(Point p);
+    /**
+     * @brief writeStitches Write the stitches into a text file suitable for libembroidery-convert
+     * @param filename
+     */
+    static void writeStitches(const std::vector<std::vector<Point> >& stitches, std::string filename);
+
+    /**
+     * @brief writeStitches Write the stitches into a text file suitable for libembroidery-convert
+     * @param out
+     */
+    static void writeStitches(const std::vector<std::vector<Point> >& stitches, std::ostream& out);
+
+    /**
+     * @brief writeStitches Write the stitches into a text file suitable for libembroidery-convert
+     * @param filename
+     */
+    static void writeStitches(const std::vector<Point>& stitches, const std::string filename);
+
+    static std::string outputStitch(Point p);
 
     void writeStitches(std::ostream& out);
 
-    void writeStitches(const std::vector<Point>& stitches, std::ostream& out);
+    static void writeStitches(const std::vector<Point>& stitches, std::ostream& out);
 
     double getStitchLengthes(const std::vector<Point>& stitches, std::vector<double>& lengths);
 
@@ -378,7 +398,7 @@ public:
 
     void addStartStop();
 
-    void addStartStop(std::vector<Point>& patch);
+    static void addStartStop(std::vector<Point>& patch);
 
     template<class Line>
     void writePatches(std::ostream& out, std::vector<Line>& patches);
