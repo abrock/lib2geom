@@ -67,6 +67,25 @@ int main(int argc, char **argv) {
     hair.writeStitches(hair.greedySolution, outline_file + "-greedy.txt");
 
     hair.printStats();
+    std::vector<std::string> all_stats;
+
+    std::vector<std::vector<Geom::Point> > total_vector;
+    for (size_t ii = 0; ii < boundary.size() && ii < curve.size(); ++ii) {
+        Hair hair;
+        hair.setDensity(2.05);
+
+        hair.setOutline(boundary[ii]);
+        hair.setCurve(curve[ii]);
+
+        hair.run();
+        all_stats.push_back(hair.getStats());
+        total_vector.push_back(hair.greedySolution);
+    }
+    hair.writeStitches(total_vector, outline_file + "-all-greedy.txt");
+    std::cout << "All stitch length stats:" << std::endl;
+    for (auto const & it : all_stats) {
+        std::cout << it << std::endl;
+    }
 
     /*
     hair.writeAreas("tail-1-areas.svg");

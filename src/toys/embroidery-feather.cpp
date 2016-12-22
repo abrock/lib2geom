@@ -143,6 +143,7 @@ int main(int argc, char **argv) {
     std::vector<std::vector<Geom::Point> > total_vector;
     for (size_t ii = 0; ii < boundary.size() && ii < curve.size() && ii < template_path.size(); ++ii) {
         Hair hair;
+        hair.setDensity(3.0);
 
         hair.setOutline(boundary[ii]);
         hair.setFeatherCurve(curve[ii]);

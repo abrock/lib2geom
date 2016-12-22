@@ -92,7 +92,7 @@ private:
      */
     Coord _offset = .311;
 
-    double _line_spacing = .5;
+    double _line_spacing = .35;
 
     /**
      * @brief areaGrow Make the area larger.
@@ -156,6 +156,11 @@ private:
 
 public:
 
+    void setLineSpacing(double const new_spacing);
+
+    void setDensity(double const new_density);
+
+
     double meanDist(Path const& template_path, Path const& offsetted, Path const& area_of_interest = Path());
 
     bool offsetTemplateOnCurve(
@@ -169,6 +174,8 @@ public:
             Path const& area_of_interest = Path());
 
     void setOutline(Path const& p);
+
+    void setCurve(Path const& p);
 
     void getFeatherCurves();
 
@@ -184,6 +191,8 @@ public:
     void setFeatherTemplate(Path const& p);
 
     void printStats();
+
+    std::string getStats();
 
     std::vector<Point> greedySolution;
 

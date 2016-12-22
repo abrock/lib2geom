@@ -170,55 +170,36 @@ double Hair::getStitchLengthes(const std::vector<Point>& stitches, std::vector<d
 Hair::Hair(Path _outline, Path _curve) : _outline(_outline), _curve(_curve) {}
 
 void Hair::run() {
-    clock_t start = clock();
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
 
-    //makeAreaLarger(outline, areaGrow);
-
-    clock_t start2 = clock();
+    ParallelTime time, global_time;
     getCurves();
-    clock_t stop2 = clock();
-    std::cerr << "getCurves took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+    std::cout << "getCurves took " << time.print() << std::endl;
 
-    start2 = clock();
+    time.start();
     getStitches();
-    stop2 = clock();
-    std::cerr << "getStitches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+    std::cout << "getStitches took " << time.print() << std::endl;
 
-    start2 = clock();
+    time.start();
     purgeOutside();
-    stop2 = clock();
-    std::cerr << "purgeOutside took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+    std::cout << "purgeOutside took " << time.print() << std::endl;
 
-    start2 = clock();
+    time.start();
     assignOutlineIntersections();
-    stop2 = clock();
-    std::cerr << "assignOutlineIntersections took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+    std::cout << "assignOutlineIntersections took " << time.print() << std::endl;
 
-    start2 = clock();
+    time.start();
     getOutlineIntermediateStitches();
-    stop2 = clock();
-    std::cerr << "getOutlineIntersections took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+    std::cout << "getOutlineIntersections took " << time.print() << std::endl;
 
-    start2 = clock();
+    time.start();
     assembleAreas();
-    stop2 = clock();
-    std::cerr << "assemblePatches took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+    std::cout << "assemblePatches took " << time.print() << std::endl;
 
-    start2 = clock();
+    time.start();
     assembleGreedySolution();
-    stop2 = clock();
-    std::cerr << "assembleGreedySolution took " << (static_cast<double>(stop2-start2)) / CLOCKS_PER_SEC << std::endl << std::endl;
-    std::cerr << "using " << memoryConsumptionKB()/1024 << "MB of memory" << std::endl;
+    std::cout << "assembleGreedySolution took " << time.print() << std::endl;
 
-    clock_t stop = clock();
-    std::cerr << "Calculation took " << (static_cast<double>(stop-start)) / CLOCKS_PER_SEC << std::endl << std::endl;
+    std::cout << "Calculation took " << global_time.print() << std::endl << std::endl;
 }
 
 size_t getCorner(Path const& p) {
@@ -1200,22 +1181,50 @@ void Hair::purgeOutside() {
         startInter.height = level;
         endInter.height = level;
         for (size_t ii = 0; ii + 1 < line.size(); ++ii) {
-            if (inside[ii] && inside[ii+1]) {
-                newLine.push_back(line[ii+1]);
-                _stitch_length_stats.push((line[ii] - line[ii+1]).length());
-                continue;
-            }
             BezierCurve _straightLine = BezierCurveN<1>(line[ii], line[ii+1]);
-            Path straightLine;
-            straightLine.append(_straightLine);
-            std::vector<PathIntersection> intersection = straightLine.intersect(_outline);
+            Path straight_line;
+            straight_line.append(_straightLine);
+            std::vector<PathIntersection> intersection = straight_line.intersect(_outline);
+            if (inside[ii] && inside[ii+1]) {
+                if (intersection.empty()) {
+                    newLine.push_back(line[ii+1]);
+                    _stitch_length_stats.push((line[ii] - line[ii+1]).length());
+                    continue;
+                }
+                else { // both points inside but connection crosses outline
+                    if (0 != intersection.size() % 2) {
+                        throw std::runtime_error(std::string("Got an uneven number of intersections between a straight line and outline in file") + __FILE__ + ", line " + std::to_string(__LINE__));
+                    }
+                    Point end_point = straight_line.pointAt(intersection[0].first);
+                    endInter.setPoint(end_point);
+                    endInter.time = intersection[0].second;
+                    newLine.push_back(end_point);
+                    if (lineLength(newLine) > _min_stitch_length) {
+#pragma omp critical
+                        {
+                            newStitches.push_back(newLine);
+                            _levels[level].push_back(EmbroideryLine(newLine, level, startInter, endInter));
+                            startInter.line = &_levels[level].back();
+                            endInter.line = &_levels[level].back();
+                            _intersections.push_back(startInter);
+                            _intersections.push_back(endInter);
+                        }
+                    }
+                    newLine.clear();
+                    Point start_point = straight_line.pointAt(intersection[1].first);
+                    newLine.push_back(start_point);
+                    newLine.push_back(line[ii+1]);
+                    startInter.time = intersection[1].second;
+                    startInter.setPoint(start_point);
+                }
+            }
             if (inside[ii] && !inside[ii+1]) {
                 //straightLine.stitchTo(line[ii+1]);
                 //std::cerr << "straightLine: " << write_svg_path(straightLine) << std::endl;
-                Point intersectPoint = straightLine.pointAt(intersection[0].first);
-                endInter.setPoint(intersectPoint);
+                Point intersect_point = straight_line.pointAt(intersection[0].first);
+                endInter.setPoint(intersect_point);
                 endInter.time = intersection[0].second;
-                newLine.push_back(intersectPoint);
+                newLine.push_back(intersect_point);
                 if (lineLength(newLine) > _min_stitch_length) {
 #pragma omp critical
                     {
@@ -1248,8 +1257,8 @@ void Hair::purgeOutside() {
             }
             if (!inside[ii] && !inside[ii+1]) {
                 if (2 <= intersection.size()) {
-                    const Point start_point = straightLine.pointAt(intersection[0].first);
-                    const Point end_point = straightLine.pointAt(intersection[1].first);
+                    const Point start_point = straight_line.pointAt(intersection[0].first);
+                    const Point end_point = straight_line.pointAt(intersection[1].first);
                     newLine.push_back(start_point);
                     newLine.push_back(end_point);
                     startInter.time = intersection[0].second;
@@ -1289,6 +1298,12 @@ double Hair::lineLength(const std::vector<Point>& points) {
 
 void Hair::printStats() {
     std::cout << "Stitch length stats: " << _stitch_length_stats.print() << std::endl;
+}
+
+std::string Hair::getStats() {
+    std::stringstream out;
+    out << _stitch_length_stats.print();
+    return out.str();
 }
 
 Path moveAlongPath(
@@ -2104,4 +2119,23 @@ void Hair::writeCircle(std::ostream& out, Point center, double radius, std::stri
         << " cx=\"" << center.x() << "\""
         << " cy=\"" << center.y() << "\""
         << " r=\"" << radius << "\" />" << std::endl;
+}
+
+
+void Hair::setLineSpacing(double const new_spacing) {
+    _line_spacing = new_spacing;
+    if (_line_spacing < 0.01 || !isfinite(_line_spacing)) {
+        _line_spacing = 0.3;
+    }
+
+}
+
+void Hair::setCurve(Path const& p) {
+    _curve = p;
+}
+
+void Hair::setDensity(double const new_density) {
+    if (isfinite(new_density) && new_density > 0) {
+        setLineSpacing(1.0 / new_density);
+    }
 }
