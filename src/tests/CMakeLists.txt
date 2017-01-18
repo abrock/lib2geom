@@ -9,6 +9,8 @@ implicitization-test
 #rtree-performance-test
 )
 
+add_definitions(-std=c++11)
+
 find_package(Boost COMPONENTS system filesystem REQUIRED)
 add_subdirectory(libRunningStats)
 

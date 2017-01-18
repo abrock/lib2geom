@@ -2124,7 +2124,7 @@ void Hair::writeCircle(std::ostream& out, Point center, double radius, std::stri
 
 void Hair::setLineSpacing(double const new_spacing) {
     _line_spacing = new_spacing;
-    if (_line_spacing < 0.01 || !isfinite(_line_spacing)) {
+    if (_line_spacing < 0.01 || !std::isfinite(_line_spacing)) {
         _line_spacing = 0.3;
     }
 
@@ -2135,7 +2135,7 @@ void Hair::setCurve(Path const& p) {
 }
 
 void Hair::setDensity(double const new_density) {
-    if (isfinite(new_density) && new_density > 0) {
+    if (std::isfinite(new_density) && new_density > 0) {
         setLineSpacing(1.0 / new_density);
     }
 }

@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
     std::vector<std::vector<Geom::Point> > total_vector;
     for (size_t ii = 0; ii < boundary.size() && ii < curve.size(); ++ii) {
         Hair hair;
-        hair.setDensity(2.05);
+        hair.setDensity(4.);
 
         hair.setOutline(boundary[ii]);
         hair.setCurve(curve[ii]);
