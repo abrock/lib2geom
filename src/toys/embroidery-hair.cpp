@@ -58,6 +58,7 @@ int main(int argc, char **argv) {
     PathVector boundary = read_svgd(outline_file.c_str());
     PathVector curve = read_svgd(curve_file.c_str());
 
+/*
     Hair hair(boundary[0], curve[0]);
 
 
@@ -67,12 +68,16 @@ int main(int argc, char **argv) {
     hair.writeStitches(hair.greedySolution, outline_file + "-greedy.txt");
 
     hair.printStats();
+
+    */
+
     std::vector<std::string> all_stats;
 
     std::vector<std::vector<Geom::Point> > total_vector;
     for (size_t ii = 0; ii < boundary.size() && ii < curve.size(); ++ii) {
+        std::cout << "Running curve #" << ii+1 << " out of " << std::min(boundary.size(), curve.size()) << std::endl;
         Hair hair;
-        hair.setDensity(4.);
+        hair.setDensity(3.0);
 
         hair.setOutline(boundary[ii]);
         hair.setCurve(curve[ii]);
@@ -81,6 +86,7 @@ int main(int argc, char **argv) {
         all_stats.push_back(hair.getStats());
         total_vector.push_back(hair.greedySolution);
     }
+    Hair hair;
     hair.writeStitches(total_vector, outline_file + "-all-greedy.txt");
     std::cout << "All stitch length stats:" << std::endl;
     for (auto const & it : all_stats) {
