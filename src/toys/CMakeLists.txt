@@ -10,11 +10,25 @@ lpe-framework.cpp
 lpe-framework.h
 )
 
+file(COPY "svgd" DESTINATION ".")
+
+ADD_DEFINITIONS(
+    -std=c++11
+    -g
+    -ggdb
+    -fopenmp
+)
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g -ggdb -fopenmp")
+
+#set_source_files_properties(hair.cpp PROPERTIES COMPILE_FLAGS "-std=c++11 -g -ggdb -O2")
+
 SET(2GEOM_TOYS-2_SRC
 2dsb2d
 aa
 arc-bez
 arc-length-param
+bezier-fit
 boolops-toy
 bound-path
 bounds-test
@@ -49,10 +63,13 @@ ellipse-line-intersect-toy
 elliptiarc-3point-center-fitting
 elliptiarc-curve-fitting
 elliptical-arc-toy
+embroidery-hair
+embroidery-feather
 evolute
 filet-minion
 find-derivative
 gear
+hair-test
 hatches
 implicit-toy
 ineaa
@@ -85,6 +102,7 @@ pw-compose-test
 pw-funcs
 pw-toy
 rdm-area
+read1
 rect_01
 rect_02
 rect_03
@@ -172,3 +190,17 @@ IF(2GEOM_TOYS)
     ENDFOREACH(source)
 ENDIF(2GEOM_TOYS)
 
+add_library(hair hair.cpp)
+add_library(memoryConsumption memoryconsumption.cpp)
+add_library(geom-pathstroke geom-pathstroke.cpp)
+add_library(embroideryarea embroideryarea.cpp)
+target_link_libraries(hair embroideryarea)
+
+target_link_libraries(hair 2geom)
+
+target_link_libraries(hair-test 2geom gtest gtest_main hair memoryConsumption geom-pathstroke)
+target_link_libraries(embroidery-hair    2geom hair memoryConsumption geom-pathstroke boost_system boost_filesystem)
+target_link_libraries(embroidery-feather 2geom hair memoryConsumption geom-pathstroke boost_system boost_filesystem)
+
+add_subdirectory(paralleltime)
+target_link_libraries(hair ParallelTime)

@@ -130,6 +130,8 @@ public:
 
     void setTranslation(Point const &loc);
 
+    void setRotation(double const alpha);
+
     void setExpansionX(Coord val);
     void setExpansionY(Coord val);
     void setIdentity();

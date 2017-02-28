@@ -32,7 +32,7 @@ ENDIF(pycairo_FOUND)
 # Set Compiler Flags
 SET(CXX_WARNINGS_FLAGS "-Wall -Wformat -Wformat-security -W -Wpointer-arith -Wcast-align -Wsign-compare -Woverloaded-virtual -Wswitch -Werror=return-type")
 # set the general CXX flags, note that subproject folders may add to this list for themselves
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GTK2_CFLAGS} ${cairo_CFLAGS} ${gsl_CFLAGS} ${pycairo_CFLAGS} ${CXX_WARNINGS_FLAGS} -O2")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GTK2_CFLAGS} ${cairo_CFLAGS} ${gsl_CFLAGS} ${pycairo_CFLAGS} ${CXX_WARNINGS_FLAGS} -O2 -g")
 
 # suppress the very annoying "#pragma ms_struct" Clang warning, caused by -mms-bitfield required for GTK
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")

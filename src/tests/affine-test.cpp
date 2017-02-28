@@ -389,13 +389,13 @@ TEST(AffineTest, Inversion) {
 
 TEST(AffineTest, CoordinateAccess) {
     Affine a(0, 1, 2, 3, 4, 5);
-    for (int i=0; i<6; ++i) {
+    for (unsigned int i=0; i<6; ++i) {
         EXPECT_EQ(a[i], i);
     }
-    for (int i=0; i<6; ++i) {
+    for (unsigned int i=0; i<6; ++i) {
         a[i] = 5*i;
     }
-    for (int i=0; i<6; ++i) {
+    for (unsigned int i=0; i<6; ++i) {
         EXPECT_EQ(a[i], 5*i);
     }
 }

@@ -129,11 +129,24 @@ struct PathTime
 {
     typedef PathInternal::Sequence::size_type size_type;
 
-    Coord t; ///< Time value in the curve
-    size_type curve_index; ///< Index of the curve in the path
+    Coord t = 0.0; ///< Time value in the curve
+    size_type curve_index = 0; ///< Index of the curve in the path
 
     PathTime() : t(0), curve_index(0) {}
     PathTime(size_type idx, Coord tval) : t(tval), curve_index(idx) {}
+
+    PathTime& operator += (const double rhs) {
+        t += rhs;
+        while (t > 1) {
+            t -= 1.0;
+            curve_index++;
+        }
+        while (t < 0) {
+            t += 1.0;
+            curve_index--; // This is dangerous without knowing the size of the pathvector.
+        }
+        return *this;
+    }
 
     bool operator<(PathTime const &other) const {
         if (curve_index < other.curve_index) return true;

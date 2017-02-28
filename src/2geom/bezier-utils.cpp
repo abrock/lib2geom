@@ -49,9 +49,22 @@
 
 #include <2geom/bezier-utils.h>
 #include <2geom/math-utils.h>
+#include <2geom/bezier.h>
+#include <2geom/bezier-curve.h>
 #include <assert.h>
 
+#include <stdlib.h>
+#include <stdio.h>
+#include <gsl/gsl_rng.h>
+#include <gsl/gsl_randist.h>
+#include <gsl/gsl_matrix.h>
+#include <gsl/gsl_vector.h>
+#include <gsl/gsl_blas.h>
+#include <gsl/gsl_multifit_nlinear.h>
+
+
 namespace Geom {
+
 
 /* Forward declarations */
 static void generate_bezier(Point b[], Point const d[], double const u[], unsigned len,
@@ -244,7 +257,7 @@ bezier_fit_cubic_full(Point bezier[], int split_points[],
         reparameterize(data, len, u, bezier);
 
         /* Find max deviation of points to fitted curve. */
-        double const tolerance = sqrt(error + 1e-9);
+        double const tolerance = std::sqrt(error + 1e-9);
         double maxErrorRatio = compute_max_error_ratio(data, u, len, bezier, tolerance, &splitPoint);
 
         if ( fabs(maxErrorRatio) <= 1.0 ) {
@@ -929,7 +942,7 @@ compute_max_error_ratio(Point const d[], double const u[], unsigned const len,
         prev = curr;
     }
 
-    double const dist_ratio = sqrt(maxDistsq) / tolerance;
+    double const dist_ratio = std::sqrt(maxDistsq) / tolerance;
     double ret;
     if (max_hook_ratio <= dist_ratio) {
         ret = dist_ratio;

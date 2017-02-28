@@ -1,4 +1,5 @@
 #generate parser file with ragel
+#SET(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} " -g -ggdb ")
 SET(SVG_PARSER_CPP "${CMAKE_CURRENT_SOURCE_DIR}/svg-path-parser.cpp")
 SET(SVG_PARSER_TMP "${CMAKE_CURRENT_SOURCE_DIR}/svg-path-parser.tmp")
 SET(SVG_PARSER_RL "${CMAKE_CURRENT_SOURCE_DIR}/svg-path-parser.rl")

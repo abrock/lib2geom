@@ -246,6 +246,14 @@ Point Affine::rotationCenter() const {
     return Point(x,y);
 };
 
+void Affine::setRotation(double const alpha) {
+    double const cos = std::cos(alpha);
+    double const sin = std::sin(alpha);
+    _c[0] = _c[3] = cos;
+    _c[1] = -sin;
+    _c[2]  = sin;
+}
+
 /** @brief Check whether this matrix represents pure horizontal shearing.
  * @param eps Numerical tolerance
  * @return True iff the matrix is of the form
