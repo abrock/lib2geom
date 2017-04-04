@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
     for (size_t ii = 0; ii < boundary.size() && ii < curve.size(); ++ii) {
         std::cout << "Running curve #" << ii+1 << " out of " << std::min(boundary.size(), curve.size()) << std::endl;
         Hair hair;
-        hair.setDensity(3.0);
+        hair.setDensity(3.05);
 
         hair.setOutline(boundary[ii]);
         hair.setCurve(curve[ii]);

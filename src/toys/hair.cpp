@@ -1221,24 +1221,9 @@ void Hair::purgeOutside() {
             if (inside[ii] && !inside[ii+1]) {
                 //straightLine.stitchTo(line[ii+1]);
                 //std::cerr << "straightLine: " << write_svg_path(straightLine) << std::endl;
-                PathTime outline_intersect_time;
-                if (intersection.empty()) {
-                    outline_intersect_time = _outline.nearestTime(line[ii]);
-                    PathTime alternative = _outline.nearestTime(line[ii+1]);
-                    if (
-                            Geom::distanceSq(_outline.pointAt(outline_intersect_time), line[ii])
-                            >
-                            Geom::distanceSq(_outline.pointAt(alternative), line[ii+1])
-                            ) {
-                        outline_intersect_time = alternative;
-                    }
-                }
-                else {
-                    outline_intersect_time = intersection[0].first;
-                }
-                Point intersect_point = _outline.pointAt(outline_intersect_time);
+                Point intersect_point = straight_line.pointAt(intersection[0].first);
                 endInter.setPoint(intersect_point);
-                endInter.time = outline_intersect_time;
+                endInter.time = intersection[0].second;
                 newLine.push_back(intersect_point);
                 if (lineLength(newLine) > _min_stitch_length) {
 #pragma omp critical
