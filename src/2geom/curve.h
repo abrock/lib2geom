@@ -97,6 +97,15 @@ public:
     /// Check whether the curve is a line segment.
     virtual bool isLineSegment() const { return false; }
 
+    /// Check whether the curve is a quadratic Bezier.
+    virtual bool isQuadraticBezier() const { return false; }
+
+    /// Check whether the curve is a cubic Bezier.
+    virtual bool isCubicBezier() const { return false; }
+
+    /// Check whether the curve is a any type of Bezier, including line segments.
+    virtual bool isBezier() const { return false; }
+
     /** @brief Get the interval of allowed time values.
      * @return \f$[0, 1]\f$ */
     virtual Interval timeRange() const {

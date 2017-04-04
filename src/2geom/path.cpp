@@ -527,9 +527,9 @@ public:
             for (std::size_t k = 0; k < cx.size(); ++k) {
                 PathTime tw(ii->index, cx[k].first), tow(i->index, cx[k].second);
                 _result.push_back(PathIntersection(
-                    w == 0 ? tw : tow,
-                    w == 0 ? tow : tw,
-                    cx[k].point()));
+                                      w == 0 ? tw : tow,
+                                      w == 0 ? tow : tw,
+                                      cx[k].point()));
             }
         }
     }
@@ -540,13 +540,13 @@ public:
 
 private:
     typedef boost::intrusive::list
-        < CurveRecord
-        , boost::intrusive::member_hook
-            < CurveRecord
-            , boost::intrusive::list_member_hook<>
-            , &CurveRecord::_hook
-            >
-        > ActiveCurveList;
+    < CurveRecord
+    , boost::intrusive::member_hook
+    < CurveRecord
+    , boost::intrusive::list_member_hook<>
+    , &CurveRecord::_hook
+    >
+    > ActiveCurveList;
 
     std::vector<CurveRecord> _records;
     std::vector<PathIntersection> &_result;
@@ -616,6 +616,31 @@ int Path::winding(Point const &p) const {
         }
     }
     return wind;
+}
+
+PathVector Path::removeLineOverlap(PathVector const& other) const {
+    PathVector result;
+    std::vector<PathTime> intersections;
+    for (PathVector::const_iterator it = other.begin(); it != other.end(); ++it) {
+        std::vector<Intersection<PathTime> > current_intersections = intersect(*it);
+        intersections.reserve(intersections.size() + current_intersections.size());
+        for (size_t ii = 0; ii < current_intersections.size(); ++ii) {
+            intersections.push_back(current_intersections[ii].first);
+        }
+    }
+    std::vector<Path> pieces = subdivide(intersections);
+
+    for (std::vector<Path>::iterator it = pieces.begin(); it != pieces.end(); ++it) {
+        if (!it->empty()) {
+            Point p = it[0].pointAt(.5);
+            int winding = other.winding(p);
+            if (winding % 2 == 0) {
+                result.push_back(*it);
+            }
+        }
+    }
+
+    return result;
 }
 
 std::vector<double> Path::allNearestTimes(Point const &_point, double from, double to) const
@@ -711,6 +736,103 @@ std::vector<Coord> Path::nearestTimePerCurve(Point const &p) const
         np.push_back(it->nearestTime(p));
     }
     return np;
+}
+
+namespace {
+template<class C>
+void handle_subdivision_part(
+        Curve const& curve,
+        std::vector<Coord> const& current_vec,
+        std::vector<Path>& result,
+        Path& current_path) {
+    std::vector<C> parts = dynamic_cast<C const&>(curve).subdivide(current_vec);
+    if (current_vec.front() <= 0 && !current_path.empty()) {
+        result.push_back(current_path);
+        current_path.clear();
+    }
+    for (size_t jj = 0; jj < parts.size(); ++jj) {
+        current_path.append(parts[jj]);
+        if (jj+1 < parts.size() && !current_path.empty()) {
+            result.push_back(current_path);
+            current_path.clear();
+        }
+    }
+}
+} // anonymous namespace
+
+std::vector<Path> Path::subdivide(std::vector<PathTime> times_in) const {
+    std::vector<std::vector<Coord> > times(size());
+    for (size_t ii = 0; ii < times_in.size(); ++ii) {
+        size_t const current_index = times_in[ii].curve_index;
+        double const current_time = times_in[ii].t;
+        if (current_index < times.size()) {
+            times[current_index].push_back(current_time);
+        }
+        else {
+            times.back().push_back(1.0);
+        }
+    }
+    for (size_t ii = 0; ii < times.size(); ++ii) {
+        std::vector<Coord>& current_vec = times[ii];
+        std::sort(current_vec.begin(), current_vec.end());
+        for (size_t jj = 0; jj < current_vec.size(); ++jj) {
+            double& t = current_vec[jj];
+            if (t < 0) {
+                t = 0;
+            }
+            else if (t > 1) {
+                t=1;
+            }
+        }
+    }
+    std::vector<Path> result;
+    Path current_path;
+
+    for (size_t ii = 0; ii < times.size(); ++ii) {
+        if (times[ii].empty()) {
+            current_path.append(at(ii));
+        }
+        else {
+            std::vector<Coord> const& current_vec = times[ii];
+            if (current_vec.front() <= 0 && !current_path.empty()) {
+                result.push_back(current_path);
+                current_path.clear();
+            }
+            try {
+                if (at(ii).isLineSegment()) {
+                    handle_subdivision_part<LineSegment>(at(ii), current_vec, result, current_path);
+                }
+                else if (at(ii).isQuadraticBezier()) {
+                    handle_subdivision_part<QuadraticBezier>(at(ii), current_vec, result, current_path);
+                }
+                else if (at(ii).isCubicBezier()) {
+                    handle_subdivision_part<CubicBezier>(at(ii), current_vec, result, current_path);
+                }
+                else {
+                    throw std::runtime_error("Curve is not a bezier");
+                }
+                if (current_vec.back() >= 1 && !current_path.empty()) {
+                    result.push_back(current_path);
+                    current_path.clear();
+                }
+            }
+            catch (std::bad_cast const& ex) {
+                current_path.append(at(ii));
+                std::cout << "Curve #" << ii
+                          << " in path could not be casted: " << std::endl
+                          << ex.what() << std::endl;
+            }
+            catch (std::runtime_error const& ex) {
+                current_path.append(at(ii));
+                std::cout << "Curve #" << ii << " in path is not a bezier curve" << std::endl;
+            }
+        }
+    }
+    if (!current_path.empty()) {
+        result.push_back(current_path);
+    }
+
+    return result;
 }
 
 PathTime Path::nearestTime(Point const &p, Coord *dist) const
@@ -1043,7 +1165,7 @@ void Path::do_append(Curve *c)
             THROW_CONTINUITYERROR();
         }
         if (_closed && c->isLineSegment() &&
-            c->finalPoint() == _closing_seg->finalPoint())
+                c->finalPoint() == _closing_seg->finalPoint())
         {
             // appending a curve that matches the closing segment has no effect
             delete c;

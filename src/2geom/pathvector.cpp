@@ -237,6 +237,20 @@ int PathVector::winding(Point const &p) const
     return wind;
 }
 
+PathVector PathVector::removeLineOverlap(PathVector const& other) const {
+    PathVector result;
+    for (const_iterator ii = begin(); ii != end(); ++ii) {
+        PathVector current_result = ii->removeLineOverlap(other);
+        if (!current_result.empty()) {
+            for (const_iterator jj = current_result.begin(); jj != current_result.end(); ++jj) {
+                result.insert(result.end(), *jj);
+            }
+        }
+    }
+
+    return result;
+}
+
 boost::optional<PathVectorTime> PathVector::nearestTime(Point const &p, Coord *dist) const
 {
     boost::optional<PathVectorTime> retval;

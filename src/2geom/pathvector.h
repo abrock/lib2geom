@@ -269,6 +269,13 @@ public:
      * This is simply the sum of winding numbers for constituent paths. */
     int winding(Point const &p) const;
 
+    /**
+     * @brief Remove parts of the path which are covered by a given PathVector (other)
+     * @param other PathVector which covers some parts of (this)
+     * @return PathVector with subpaths which are not covered by (other).
+     */
+    PathVector removeLineOverlap(PathVector const& other) const;
+
     boost::optional<PathVectorTime> nearestTime(Point const &p, Coord *dist = NULL) const;
     std::vector<PathVectorTime> allNearestTimes(Point const &p, Coord *dist = NULL) const;
 

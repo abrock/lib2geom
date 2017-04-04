@@ -147,6 +147,10 @@ struct PathTime
         }
         return *this;
     }
+    PathTime(Coord tval) {
+        t = fmod(tval, 1.0);
+        curve_index = static_cast<size_t>(tval);
+    }
 
     bool operator<(PathTime const &other) const {
         if (curve_index < other.curve_index) return true;
@@ -582,6 +586,8 @@ public:
      * considered to be inside the path. */
     int winding(Point const &p) const;
 
+    PathVector removeLineOverlap(PathVector const& other) const;
+
     std::vector<Coord> allNearestTimes(Point const &p, Coord from, Coord to) const;
     std::vector<Coord> allNearestTimes(Point const &p) const {
         return allNearestTimes(p, 0, size_default());
@@ -805,6 +811,8 @@ public:
         _unshare();
         do_append(new CurveType(finalPoint(), a, b, c, d, e, f, g, h, i));
     }
+
+    std::vector<Path> subdivide(std::vector<PathTime> times_in) const;
 
     /** @brief Reduce the closing segment to a point if it's shorter than precision.
      * Do this by moving the final point. */

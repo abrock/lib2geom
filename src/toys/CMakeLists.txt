@@ -29,6 +29,7 @@ aa
 arc-bez
 arc-length-param
 bezier-fit
+bezier-subdivision
 boolops-toy
 bound-path
 bounds-test
@@ -93,6 +94,8 @@ parametrics
 parser
 path-along-path
 path-effects
+path-remove-line-overlap
+path-subdivision
 pencil
 pencil-2
 plane3d
