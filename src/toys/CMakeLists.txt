@@ -79,6 +79,7 @@ inverse-test
 kinematic_templates
 levelsets-test
 line-toy
+lineopt
 load-svgd
 match-curve
 mesh-grad
@@ -204,3 +205,5 @@ target_link_libraries(embroidery-feather 2geom hair memoryConsumption geom-paths
 
 add_subdirectory(paralleltime)
 target_link_libraries(hair ParallelTime)
+
+add_library(lineoptimization lineoptimization.cpp)
