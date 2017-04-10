@@ -210,3 +210,4 @@ add_subdirectory(paralleltime)
 target_link_libraries(hair ParallelTime)
 
 add_library(lineoptimization lineoptimization.cpp)
+target_link_libraries(lineopt lineoptimization)
