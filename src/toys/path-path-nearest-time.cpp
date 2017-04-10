@@ -71,7 +71,8 @@ private:
 
         Timer tm;
         tm.start();
-        std::pair<Coord, Coord> times = nearest_times(a_path[0], b_path[0]);
+        double min_dist = 0;
+        std::pair<Coord, Coord> times = nearest_times(a_path[0], b_path[0], &min_dist);
         long long time = 0;
         tm.lap(time);
         *notify << time/1000 << "us";
@@ -88,7 +89,8 @@ private:
         Rect rect_b(psh.pts[9] - Geom::Point(60,20), psh.pts[9] + Geom::Point(60,20));
         cairo_rectangle(cr, rect_b);
 
-        *notify << " Rect dist: " << distance(rect_a, rect_b);
+        *notify << std::endl << "Rect dist: " << distance(rect_a, rect_b);
+        *notify << std::endl << "Curve dist: " << min_dist;
 
 
         cairo_stroke(cr);

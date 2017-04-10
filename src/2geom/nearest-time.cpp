@@ -333,12 +333,19 @@ double clip(double t, double lower = 0, double upper = 1) {
     return t;
 }
 
-
+/**
+ * @brief nearest_times Calculates the pair of times where two curves are closest to each other
+ * @param [inout] result
+ * @param stepsize Initial guess for the stepsize, is overwritten if <= 0.
+ * @param dist Calculated distance between the curves (optional)
+ * @param max_it Maximum number of iterations used.
+ */
 void nearest_times(std::pair<Coord, Coord>& result,
                    Curve const& a,
                    Curve const& b,
                    double& stepsize,
-                   Coord * dist = NULL) {
+                   Coord * dist = NULL,
+                   size_t const max_it = 20) {
     Coord& t_a = result.first;
     Coord& t_b = result.second;
 
@@ -355,13 +362,16 @@ void nearest_times(std::pair<Coord, Coord>& result,
                                      ));
     }
 
-
-    for (size_t ii = 0; ii < 20; ++ii) {
+    for (size_t ii = 0; ii < max_it; ++ii) {
         residual = a.pointAt(t_a) - b.pointAt(t_b);
         double const gradient_a =  dot(residual, d_a->pointAt(t_a));
         double const gradient_b = -dot(residual, d_b->pointAt(t_b));
+
         double const new_a = clip(t_a - stepsize * gradient_a);
         double const new_b = clip(t_b - stepsize * gradient_b);
+        double const update_a = new_a - t_a;
+        double const update_b = new_b - t_b;
+
         double const new_distance = distanceSq(a.pointAt(new_a), b.pointAt(new_b));
         if (new_distance < best_distance) {
             best_distance = new_distance;
@@ -371,6 +381,9 @@ void nearest_times(std::pair<Coord, Coord>& result,
         else {
             stepsize /= 2;
         }
+        if (update_a * update_a + update_b * update_b < 1e-32) {
+            break;
+        }
     }
 
     if (dist) {
@@ -378,7 +391,7 @@ void nearest_times(std::pair<Coord, Coord>& result,
     }
 }
 
-}
+} // anonymous namespace
 
 std::pair<Coord, Coord> nearest_times(
         Curve const& a,
@@ -409,7 +422,7 @@ std::pair<Coord, Coord> nearest_times(
         }
     }
 
-    nearest_times(result, a, b, best_stepsize, &best_distance);
+    nearest_times(result, a, b, best_stepsize, &best_distance, 1000);
 
 
     if (dist) {
