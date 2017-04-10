@@ -215,6 +215,16 @@ Coord distanceSq(Point const &p, OptRect const &rect);
 /// Minimum distance to rectangle, or infinity if empty.
 Coord distance(Point const &p, OptRect const &rect);
 
+/**
+ * @brief distanceSq calculates the minimum squared distance between two rectangles.
+ */
+Coord distanceSq(Rect const& a, Rect const& b);
+
+/**
+ * @brief distance calculates the minimum distance between two rectangles.
+ */
+Coord distance(Rect const& a, Rect const& b);
+
 inline bool Rect::interiorContains(OptRect const &r) const {
     return !r || interiorContains(static_cast<Rect const &>(*r));
 }

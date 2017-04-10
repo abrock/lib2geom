@@ -43,6 +43,8 @@
 #include <2geom/bezier.h>
 
 
+
+
 namespace Geom
 {
 
@@ -125,6 +127,26 @@ all_nearest_times( Point const& p, Piecewise< D2<SBasis> > const& c )
 {
     return all_nearest_times(p, c, c.cuts[0], c.cuts[c.size()]);
 }
+
+/**
+ * @brief nearest_times calculates the pair of times for which two curves a closest to each other.
+ * @param dist the distance between the two curves at the nearest times (optional).
+ * @return A pair of times where first corresponds to a point on curve a and second to a point on curve b.
+ */
+std::pair<Coord, Coord> nearest_times(
+        Curve const& a,
+        Curve const& b,
+        Coord * dist = NULL);
+
+/**
+ * @brief nearest_times calculates the pair of PathTimes for which two paths a closest to each other.
+ * @param dist the distance between the two curves at the nearest times (optional).
+ * @return A pair of PathTimes where first corresponds to a point on path a and second to a point on path b.
+ */
+std::pair<PathTime, PathTime> nearest_times(
+        Path const& a,
+        Path const& b,
+        Coord *dist = NULL);
 
 } // end namespace Geom
 

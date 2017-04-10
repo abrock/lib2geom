@@ -173,6 +173,17 @@ Coord distance(Point const &p, OptRect const &rect)
     return distance(p, *rect);
 }
 
+Coord distanceSq(Rect const& a, Rect const& b) {
+    Coord dx = distance(a[0], b[0]);
+    Coord dy = distance(a[1], b[1]);
+
+    return dx*dx + dy*dy;
+}
+
+Coord distance(Rect const& a, Rect const& b) {
+    return std::sqrt(distanceSq(a, b));
+}
+
 } // namespace Geom
 
 /*

@@ -75,6 +75,7 @@ parametrics
 parser
 path-along-path
 path-effects
+path-path-nearest-time
 pencil
 pencil-2
 plane3d

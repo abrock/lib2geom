@@ -48,7 +48,7 @@ class GenericOptInterval;
  */
 template <typename C>
 class GenericInterval
-    : CoordTraits<C>::IntervalOps
+        : CoordTraits<C>::IntervalOps
 {
     typedef typename CoordTraits<C>::IntervalType CInterval;
     typedef GenericInterval<C> Self;
@@ -162,8 +162,8 @@ public:
     }
     /** @brief Extend the interval to include the given number. */
     void expandTo(C val) {
-       if(val < _b[0]) _b[0] = val;
-       if(val > _b[1]) _b[1] = val;  //no else, as we want to handle NaN
+        if(val < _b[0]) _b[0] = val;
+        if(val > _b[1]) _b[1] = val;  //no else, as we want to handle NaN
     }
     /** @brief Expand or shrink the interval in both directions by the given amount.
      * After this method, the interval's length (extent) will be increased by
@@ -252,10 +252,10 @@ inline GenericInterval<C> unify(GenericInterval<C> const &a, GenericInterval<C> 
  */
 template <typename C>
 class GenericOptInterval
-    : public boost::optional<typename CoordTraits<C>::IntervalType>
-    , boost::orable< GenericOptInterval<C>
-    , boost::andable< GenericOptInterval<C>
-      > >
+        : public boost::optional<typename CoordTraits<C>::IntervalType>
+        , boost::orable< GenericOptInterval<C>
+        , boost::andable< GenericOptInterval<C>
+        > >
 {
     typedef typename CoordTraits<C>::IntervalType CInterval;
     typedef typename CoordTraits<C>::OptIntervalType OptCInterval;
@@ -344,6 +344,17 @@ inline std::ostream &operator<< (std::ostream &os,
                                  Geom::GenericInterval<C> const &I) {
     os << "Interval("<<I.min() << ", "<<I.max() << ")";
     return os;
+}
+
+template<typename C>
+inline C distance(Geom::GenericInterval<C> const &a, Geom::GenericInterval<C> const &b) {
+    if (a.max() <= b.min()) {
+        return b.min() - a.max();
+    }
+    if (b.max() <= a.min()) {
+        return a.min() - b.max();
+    }
+    return 0;
 }
 
 } // namespace Geom

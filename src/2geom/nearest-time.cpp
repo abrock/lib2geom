@@ -33,6 +33,9 @@
 
 #include <2geom/nearest-time.h>
 #include <algorithm>
+#include <2geom/curve.h>
+#include <2geom/path.h>
+
 
 namespace Geom
 {
@@ -238,6 +241,8 @@ double nearest_time(Point const &p,
     return c.mapToDomain(nearest, ni);
 }
 
+
+
 std::vector<double>
 all_nearest_times(Point const &p,
                   Piecewise< D2<SBasis> > const &c,
@@ -315,6 +320,136 @@ all_nearest_times(Point const &p,
     all_nearest.erase(std::unique(all_nearest.begin(), all_nearest.end()),
                       all_nearest.end());
     return all_nearest;
+}
+
+namespace {
+double clip(double t, double lower = 0, double upper = 1) {
+    if (t < lower) {
+        return lower;
+    }
+    if (t > upper) {
+        return upper;
+    }
+    return t;
+}
+
+
+void nearest_times(std::pair<Coord, Coord>& result,
+                   Curve const& a,
+                   Curve const& b,
+                   double& stepsize,
+                   Coord * dist = NULL) {
+    Coord& t_a = result.first;
+    Coord& t_b = result.second;
+
+    Curve const* d_a = a.derivative();
+    Curve const* d_b = b.derivative();
+
+    Point residual = a.pointAt(t_a) - b.pointAt(t_b);
+    double best_distance = dot(residual, residual);
+
+    if (stepsize <= 0) {
+        stepsize = 1.0 / (std::max(
+                                     std::abs(dot(residual, d_a->pointAt(t_a))),
+                                     std::abs(dot(residual, d_b->pointAt(t_b)))
+                                     ));
+    }
+
+
+    for (size_t ii = 0; ii < 20; ++ii) {
+        residual = a.pointAt(t_a) - b.pointAt(t_b);
+        double const gradient_a =  dot(residual, d_a->pointAt(t_a));
+        double const gradient_b = -dot(residual, d_b->pointAt(t_b));
+        double const new_a = clip(t_a - stepsize * gradient_a);
+        double const new_b = clip(t_b - stepsize * gradient_b);
+        double const new_distance = distanceSq(a.pointAt(new_a), b.pointAt(new_b));
+        if (new_distance < best_distance) {
+            best_distance = new_distance;
+            t_a = new_a;
+            t_b = new_b;
+        }
+        else {
+            stepsize /= 2;
+        }
+    }
+
+    if (dist) {
+        *dist = std::sqrt(best_distance);
+    }
+}
+
+}
+
+std::pair<Coord, Coord> nearest_times(
+        Curve const& a,
+        Curve const& b,
+        Coord * dist) {
+
+    std::pair<Coord, Coord> result(0,0);
+    double best_distance = distance(a.pointAt(0), b.pointAt(0));
+    double best_stepsize = -1;
+    std::vector<std::pair<Coord, Coord> > initial_guesses;
+    size_t ig_grid_size = 4;
+    for (size_t ii = 0; ii <= ig_grid_size; ++ii) {
+        double const t_a = (double)ii / ig_grid_size;
+        for (size_t jj = 0; jj <= ig_grid_size; ++jj) {
+            double const t_b = (double) jj / ig_grid_size;
+            initial_guesses.push_back(std::pair<Coord, Coord>(t_a, t_b));
+        }
+    }
+
+    for (std::pair<Coord, Coord>& ig : initial_guesses) {
+        double current_distance = std::numeric_limits<Coord>::max();
+        double current_stepsize = -1;
+        nearest_times(ig, a, b, current_stepsize, &current_distance);
+        if (current_distance < best_distance) {
+            best_distance = current_distance;
+            best_stepsize = current_stepsize;
+            result = ig;
+        }
+    }
+
+    nearest_times(result, a, b, best_stepsize, &best_distance);
+
+
+    if (dist) {
+        *dist = best_distance;
+    }
+    return result;
+}
+
+std::pair<PathTime, PathTime> nearest_times(
+        Path const& a,
+        Path const& b,
+        Coord *dist) {
+    double min_dist = std::numeric_limits<double>::max();
+    std::pair<PathTime, PathTime> result;
+    PathTime& time_a = result.first;
+    PathTime& time_b = result.second;
+
+    for (size_t ii = 0; ii < a.size(); ++ii) {
+        Curve const& curve_a = a[ii];
+        Rect const bounds_a = curve_a.boundsFast();
+        for (size_t jj = 0; jj < b.size(); ++jj) {
+            Curve const& curve_b = b[jj];
+            if (distance(bounds_a, curve_b.boundsFast()) > min_dist) {
+                continue;
+            }
+            double current_dist = std::numeric_limits<double>::max();
+            std::pair<Coord, Coord> current_result = nearest_times(curve_a, curve_b, &current_dist);
+            if (current_dist < min_dist) {
+                min_dist = current_dist;
+                time_a.curve_index = ii;
+                time_a.t = current_result.first;
+                time_b.curve_index = jj;
+                time_b.t = current_result.second;
+            }
+        }
+    }
+    if (dist) {
+        *dist = min_dist;
+    }
+    return result;
 }
 
 } // end namespace Geom
