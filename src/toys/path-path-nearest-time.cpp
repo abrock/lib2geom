@@ -79,6 +79,9 @@ private:
         Point point_a = a_path.pointAt(times.first);
         Point point_b = b_path.pointAt(times.second);
 
+        std::pair<PathTime, PathTime> times2 = nearest_times(a_path, b_path);
+        double const lower_limit = distance(a_path.boundsFast(), b_path.boundsFast());
+
         Path line;
         line.append(LineSegment(point_a, point_b));
         cairo_path(cr, line);

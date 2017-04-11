@@ -184,6 +184,42 @@ Coord distance(Rect const& a, Rect const& b) {
     return std::sqrt(distanceSq(a, b));
 }
 
+Coord distanceSq(const OptRect &a, const OptRect &b) {
+    if (!a || !b) {
+        return std::numeric_limits<Coord>::max();
+    }
+    return distanceSq(*a, *b);
+}
+
+Coord distance(const OptRect &a, const OptRect &b) {
+    if (!a || !b) {
+        return std::numeric_limits<Coord>::max();
+    }
+    return distance(*a, *b);
+}
+
+Coord distanceSq(const Rect &a, const OptRect &b) {
+    if (!b) {
+        return std::numeric_limits<Coord>::max();
+    }
+    return distanceSq(a, *b);
+}
+
+Coord distanceSq(const OptRect &a, const Rect &b) {
+    return distanceSq(b, a);
+}
+
+Coord distance(const Rect &a, const OptRect &b) {
+    if (!b) {
+        return std::numeric_limits<Coord>::max();
+    }
+    return distance(a, *b);
+}
+
+Coord distance(const OptRect &a, const Rect &b) {
+    return distance(b, a);
+}
+
 } // namespace Geom
 
 /*
