@@ -22,6 +22,7 @@ ellipse-test
 elliptical-arc-test
 intersection-graph-test
 line-test
+nearest-times-test
 nl-vector-test
 path-test
 point-test

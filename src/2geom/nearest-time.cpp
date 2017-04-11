@@ -342,15 +342,14 @@ double clip(double t, double lower = 0, double upper = 1) {
  */
 void nearest_times(std::pair<Coord, Coord>& result,
                    Curve const& a,
+                   Curve const* d_a,
                    Curve const& b,
+                   Curve const* d_b,
                    double& stepsize,
                    Coord * dist = NULL,
                    size_t const max_it = 20) {
     Coord& t_a = result.first;
     Coord& t_b = result.second;
-
-    Curve const* d_a = a.derivative();
-    Curve const* d_b = b.derivative();
 
     Point residual = a.pointAt(t_a) - b.pointAt(t_b);
     double best_distance = dot(residual, residual);
@@ -362,21 +361,25 @@ void nearest_times(std::pair<Coord, Coord>& result,
                                      ));
     }
 
-    for (size_t ii = 0; ii < max_it; ++ii) {
-        residual = a.pointAt(t_a) - b.pointAt(t_b);
-        double const gradient_a =  dot(residual, d_a->pointAt(t_a));
-        double const gradient_b = -dot(residual, d_b->pointAt(t_b));
+    double gradient_a =  dot(residual, d_a->pointAt(t_a));
+    double gradient_b = -dot(residual, d_b->pointAt(t_b));
 
+    for (size_t ii = 0; ii < max_it; ++ii) {
         double const new_a = clip(t_a - stepsize * gradient_a);
         double const new_b = clip(t_b - stepsize * gradient_b);
+        Point const new_point_a = a.pointAt(new_a);
+        Point const new_point_b = b.pointAt(new_b);
         double const update_a = new_a - t_a;
         double const update_b = new_b - t_b;
 
-        double const new_distance = distanceSq(a.pointAt(new_a), b.pointAt(new_b));
+        double const new_distance = distanceSq(new_point_a, new_point_b);
         if (new_distance < best_distance) {
             best_distance = new_distance;
             t_a = new_a;
             t_b = new_b;
+            residual = new_point_a - new_point_b;
+            gradient_a =  dot(residual, d_a->pointAt(t_a));
+            gradient_b = -dot(residual, d_b->pointAt(t_b));
         }
         else {
             stepsize /= 2;
@@ -398,6 +401,9 @@ std::pair<Coord, Coord> nearest_times(
         Curve const& b,
         Coord * dist) {
 
+    Curve const* d_a = a.derivative();
+    Curve const* d_b = b.derivative();
+
     std::pair<Coord, Coord> result(0,0);
     double best_distance = distance(a.pointAt(0), b.pointAt(0));
     double best_stepsize = -1;
@@ -414,7 +420,7 @@ std::pair<Coord, Coord> nearest_times(
     for (std::pair<Coord, Coord>& ig : initial_guesses) {
         double current_distance = std::numeric_limits<Coord>::max();
         double current_stepsize = -1;
-        nearest_times(ig, a, b, current_stepsize, &current_distance);
+        nearest_times(ig, a, d_a, b, d_b, current_stepsize, &current_distance);
         if (current_distance < best_distance) {
             best_distance = current_distance;
             best_stepsize = current_stepsize;
@@ -422,7 +428,7 @@ std::pair<Coord, Coord> nearest_times(
         }
     }
 
-    nearest_times(result, a, b, best_stepsize, &best_distance, 1000);
+    nearest_times(result, a, d_a, b, d_b, best_stepsize, &best_distance, 1000);
 
 
     if (dist) {
